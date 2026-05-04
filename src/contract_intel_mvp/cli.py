@@ -83,6 +83,15 @@ def main() -> None:
     split.add_argument("--review-frac", type=float, default=0.57)
     split.add_argument("--seed", type=int, default=42)
 
+    agent_grp = sub.add_parser("agent", help="Run the agentic loop")
+    agent_sub = agent_grp.add_subparsers(dest="agent_cmd", required=True)
+    ar = agent_sub.add_parser("run", help="Start a new agent run")
+    ar.add_argument("--primary-model", default="qwen2.5:14b")
+    ar.add_argument("--shadow-model", default="qwen3:4b")
+    ar2 = agent_sub.add_parser("resume", help="Resume after human review")
+    ar2.add_argument("--primary-model", default="qwen2.5:14b")
+    ar2.add_argument("--shadow-model", default="qwen3:4b")
+
     sub.add_parser("demo-report", help="Write a Markdown/JSON demo report")
 
     ui = sub.add_parser("ui", help="Run the local web UI")
@@ -143,6 +152,14 @@ def main() -> None:
         from .splits import make_splits
         out = make_splits(Path.cwd(), review_frac=args.review_frac, seed=args.seed)
         print(f"split: {len(out['review_set'])} review, {len(out['holdout_set'])} holdout, seed={out['split_seed']}")
+    elif args.command == "agent":
+        from .agent.planner import run_agent
+        from .agent.wiring import build_registry
+        registry = build_registry()
+        run_id = run_agent(root=Path.cwd(), registry=registry,
+                           primary_model=args.primary_model,
+                           shadow_model=args.shadow_model)
+        print(f"agent {args.agent_cmd}: run_id={run_id}")
     elif args.command == "ui":
         run_server(Path.cwd(), host=args.host, port=args.port)
 

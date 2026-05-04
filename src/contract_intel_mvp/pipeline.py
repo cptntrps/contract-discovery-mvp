@@ -1575,3 +1575,81 @@ def _guess_parties(text: str) -> list[str]:
 def _first_date(text: str) -> str:
     match = re.search(r"\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}\b", text)
     return match.group(0) if match else ""
+
+
+def extract_split(root: Path, *, split: str, primary_model: str, shadow_model: str
+                  ) -> dict[str, Any]:
+    """Extract one corpus split (review or holdout) with primary+shadow + verifier."""
+    import asyncio
+    from contract_intel_mvp.agent.shadow import run_shadow_pair
+    from contract_intel_mvp.agent.verifier import extract_with_verification
+    from contract_intel_mvp.splits import load_splits
+
+    splits = load_splits(root)
+    target_ids = set(splits[f"{split}_set"])
+    docs = [d for d in _load_documents(root) if d.doc_id in target_ids]
+    interview = _load_json(root / "data" / "memory" / "interview.json", {})
+    taxonomy = _load_json(root / "data" / "memory" / "taxonomy.json", _empty_taxonomy())
+    use_memory = split == "holdout"
+
+    primary_rows: list[dict[str, Any]] = []
+    shadow_rows: list[dict[str, Any]] = []
+
+    for doc in docs:
+        prompt = build_extraction_prompt(
+            interview=interview, taxonomy=taxonomy, doc_title=doc.title,
+            doc_text=doc.text[:8000], use_memory=use_memory)
+        pair = asyncio.run(run_shadow_pair(
+            prompt=prompt, primary_model=primary_model, shadow_model=shadow_model))
+        primary_verified, _ = extract_with_verification(
+            source_text=doc.text, model=primary_model, initial_extraction=pair.primary)
+        primary_verified["doc_id"] = doc.doc_id
+        primary_verified["engine"] = pair.primary_engine
+        primary_verified["role"] = "primary"
+        primary_rows.append(primary_verified)
+        shadow_row = dict(pair.shadow)
+        shadow_row["doc_id"] = doc.doc_id
+        shadow_row["engine"] = pair.shadow_engine
+        shadow_row["role"] = "shadow"
+        shadow_rows.append(shadow_row)
+
+    runs = root / "data" / "runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    if split == "review":
+        (runs / "baseline_results.json").write_text(
+            json.dumps(primary_rows, indent=2), encoding="utf-8")
+        (runs / "shadow_review_results.json").write_text(
+            json.dumps(shadow_rows, indent=2), encoding="utf-8")
+    else:
+        (runs / "second_run_primary_holdout.json").write_text(
+            json.dumps(primary_rows, indent=2), encoding="utf-8")
+        (runs / "second_run_results.json").write_text(
+            json.dumps(shadow_rows, indent=2), encoding="utf-8")
+    return {"split": split, "n": len(docs)}
+
+
+def extract_holdout_cold(root: Path, *, shadow_model: str) -> dict:
+    """Run the small model on the holdout WITHOUT reviewed taxonomy."""
+    from contract_intel_mvp.splits import load_splits
+    splits = load_splits(root)
+    holdout_ids = set(splits["holdout_set"])
+    interview = _load_json(root / "data" / "memory" / "interview.json", {})
+    rows: list[dict] = []
+    for doc in _load_documents(root):
+        if doc.doc_id not in holdout_ids:
+            continue
+        prompt = build_extraction_prompt(
+            interview=interview, taxonomy={}, doc_title=doc.title,
+            doc_text=doc.text[:8000], use_memory=False)
+        result = _call_ollama_json(model=shadow_model, prompt=prompt)
+        engine = "ollama" if result else "heuristic_fallback"
+        if not result:
+            result = _heuristic_extract(doc, interview, {})
+        result["doc_id"] = doc.doc_id
+        result["engine"] = engine
+        result["role"] = "shadow_cold"
+        rows.append(result)
+    (root / "data" / "runs").mkdir(parents=True, exist_ok=True)
+    (root / "data" / "runs" / "shadow_holdout_cold_results.json").write_text(
+        json.dumps(rows, indent=2), encoding="utf-8")
+    return {"n": len(rows)}
