@@ -49,6 +49,40 @@ def _is_affirmative(message: str) -> bool:
                                  "looks good", "sounds good", "that works", "approve"))
 
 
+_TYPE_KEYWORDS = [
+    ("publishing",     "Publishing Agreement"),
+    ("license",        "License Agreement"),
+    ("licensing",      "License Agreement"),
+    ("distribution",   "Distribution Agreement"),
+    ("distributor",    "Distribution Agreement"),
+    ("reseller",       "Reseller Agreement"),
+    ("endorsement",    "Endorsement Agreement"),
+    ("sponsorship",    "Sponsorship Agreement"),
+    ("franchise",      "Franchise Agreement"),
+    ("agency",         "Agency Agreement"),
+    ("joint venture",  "Joint Venture Agreement"),
+    ("strategic alliance", "Strategic Alliance Agreement"),
+    ("nda",            "Non-Disclosure Agreement"),
+    ("non-disclosure", "Non-Disclosure Agreement"),
+    ("supply",         "Supply Agreement"),
+    ("service",        "Services Agreement"),
+    ("consulting",     "Consulting Agreement"),
+    ("employment",     "Employment Agreement"),
+    ("master services","Master Services Agreement"),
+    ("msa",            "Master Services Agreement"),
+]
+
+
+def _heuristic_target_class(message: str) -> str:
+    m = (message or "").lower()
+    for kw, canonical in _TYPE_KEYWORDS:
+        if kw in m:
+            return canonical
+    # No keyword match — capitalize first 4 words as a fallback
+    words = (message or "").strip().split()[:4]
+    return " ".join(w.capitalize() for w in words) or "Target Class"
+
+
 def _detect_discovery_stage(sig: dict, message: str) -> dict:
     """Server-side stage detection. Tells the agent exactly what to do next."""
     tc = (sig or {}).get("target_class", "")
@@ -347,6 +381,12 @@ def build_app(root: Path):
                     merged = dict(sig_in)
                     for k, v in updates.items():
                         if v: merged[k] = v
+                    # Defensive: if model forgot to populate target_class at stage 1
+                    # or target_description at stage 2, fall back to user message.
+                    if stage["stage"] == 1 and not (merged.get("target_class") or "").strip():
+                        merged["target_class"] = _heuristic_target_class(message)
+                    if stage["stage"] == 2 and not (merged.get("target_description") or "").strip():
+                        merged["target_description"] = message.strip() or merged.get("target_class", "")
                     return {"signature": merged,
                             "assistant": str(parsed.get("assistant") or ""),
                             "ready_to_save": bool(parsed.get("ready_to_save")),
@@ -547,6 +587,12 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
                     merged = dict(sig_in)
                     for k, v in updates.items():
                         if v: merged[k] = v
+                    # Defensive: if model forgot to populate target_class at stage 1
+                    # or target_description at stage 2, fall back to user message.
+                    if stage["stage"] == 1 and not (merged.get("target_class") or "").strip():
+                        merged["target_class"] = _heuristic_target_class(message)
+                    if stage["stage"] == 2 and not (merged.get("target_description") or "").strip():
+                        merged["target_description"] = message.strip() or merged.get("target_class", "")
                     return {"signature": merged,
                             "assistant": str(parsed.get("assistant") or ""),
                             "ready_to_save": bool(parsed.get("ready_to_save")),
