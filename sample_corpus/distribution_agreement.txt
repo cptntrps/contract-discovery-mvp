@@ -1,0 +1,10 @@
+EXHIBIT 10.2
+DISTRIBUTION AGREEMENT
+
+This Distribution Agreement is made between Northwind Products Corp. and Contoso Channels Inc.
+Northwind appoints Contoso as a non-exclusive distributor for covered products in California, Oregon, and Washington.
+Contoso may resell the products only through approved retail channels.
+The initial term is two years. Either party may terminate for uncured material breach after thirty days notice.
+Pricing, minimum purchase commitments, and quarterly sales reports are described in Schedule A.
+The agreement is governed by Delaware law.
+

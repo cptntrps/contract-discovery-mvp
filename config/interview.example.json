@@ -1,0 +1,31 @@
+{
+  "goal": "Identify contract types and generate reviewable coversheets for a small EDGAR contract corpus.",
+  "business_unit": "Demo BU",
+  "region": "US",
+  "expected_contract_types": [
+    "License Agreement",
+    "Distribution Agreement",
+    "Publishing Agreement",
+    "Supply Agreement",
+    "Service Agreement"
+  ],
+  "contract_type_aliases": {
+    "License Agreement": ["IP License", "Technology License", "Content License"],
+    "Distribution Agreement": ["Reseller Agreement", "Channel Partner Agreement"],
+    "Publishing Agreement": ["Author Agreement", "Content Publishing Agreement"]
+  },
+  "key_clause_families": [
+    "grant_of_rights",
+    "territory",
+    "term_and_termination",
+    "payment_or_royalty",
+    "exclusivity",
+    "confidentiality",
+    "governing_law"
+  ],
+  "not_expected": [
+    "employment offer letters",
+    "real estate leases"
+  ]
+}
+

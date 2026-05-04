@@ -1,0 +1,10 @@
+EXHIBIT 10.1
+TECHNOLOGY LICENSE AGREEMENT
+
+This Technology License Agreement is entered into by Alpha Software Inc. and Beta Retail LLC.
+Alpha grants Beta a non-exclusive, non-transferable license to use the licensed software in the United States.
+The agreement begins on January 1, 2025 and continues for three years unless terminated earlier.
+Beta shall pay Alpha a royalty equal to five percent of net subscription revenue.
+The parties agree that confidential information must be protected for five years after disclosure.
+This agreement is governed by the laws of the State of New York.
+

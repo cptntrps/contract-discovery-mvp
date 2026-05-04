@@ -1,0 +1,10 @@
+EXHIBIT 10.3
+MASTER SERVICES AGREEMENT
+
+This Master Services Agreement is entered into by Example Health Inc. and Meridian Analytics LLC.
+Meridian will provide implementation, reporting, and support services described in statements of work.
+Fees are payable monthly within thirty days after invoice.
+Each party will protect confidential information and comply with applicable data security requirements.
+The agreement starts on March 15, 2025 and renews annually unless either party gives notice of non-renewal.
+This agreement is governed by the laws of Texas.
+

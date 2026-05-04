@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Contract Intelligence MVP</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="mark">CI</div>
+          <div>
+            <h1>Contract Intelligence</h1>
+            <p>Reviewed-context learning demo</p>
+          </div>
+        </div>
+        <nav>
+          <button class="nav active" data-view="interview">1. Setup</button>
+          <button class="nav" data-view="corpus">2. Corpus</button>
+          <button class="nav" data-view="queue">3. Hypotheses</button>
+          <button class="nav" data-view="workbench">4. Review</button>
+          <button class="nav" data-view="intelligence">5. Intelligence</button>
+          <button class="nav" data-view="overview">6. Benchmark</button>
+        </nav>
+      </aside>
+
+      <main>
+        <header class="topbar">
+          <div>
+            <h2 id="viewTitle">Setup</h2>
+            <p id="viewSub">Start with the SME interview and scope the contract intelligence run.</p>
+            <p id="globalStatus" class="statusLine"></p>
+          </div>
+          <button id="refreshBtn" class="iconButton" title="Refresh data">↻</button>
+        </header>
+        <div id="workflowSteps" class="workflowSteps"></div>
+
+        <section id="overview" class="view">
+          <div class="toolbar">
+            <button class="action" data-action="demo-cuad">Run CUAD Demo</button>
+            <button class="action" data-action="benchmark">Refresh Benchmark</button>
+            <button class="action" data-action="demo-report">Refresh Report</button>
+          </div>
+          <div class="metrics">
+            <div class="metric"><span>Documents</span><strong id="metricDocs">0</strong></div>
+            <div class="metric"><span>Reviewed</span><strong id="metricReviewed">0</strong></div>
+            <div class="metric"><span>Reviewed Examples</span><strong id="metricPairs">0</strong></div>
+            <div class="metric"><span>Agent Flags</span><strong id="metricAgentFlags">0</strong></div>
+            <div class="metric"><span>Baseline Accuracy</span><strong id="metricBaseline">-</strong></div>
+            <div class="metric"><span>Second Run</span><strong id="metricSecond">-</strong></div>
+            <div class="metric"><span>Coversheet Δ</span><strong id="metricCoversheetDelta">-</strong></div>
+            <div class="metric"><span>Clause F1 Δ</span><strong id="metricClauseDelta">-</strong></div>
+          </div>
+          <div class="split">
+            <section class="panel">
+              <h3>Benchmark</h3>
+              <div id="benchmarkRows" class="rows"></div>
+            </section>
+            <section class="panel">
+              <h3>Run Boundary</h3>
+              <p class="plain">This MVP does not fine-tune model weights. Reviewed labels update taxonomy, playbook, examples, and rejected-pattern memory. The same Ollama model is rerun with that context.</p>
+              <div id="engineBadges" class="badges"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="interview" class="view active">
+          <section class="panel">
+            <div class="coverHeader">
+              <div>
+                <h3>Setup Interview</h3>
+                <p class="muted">Chat with the setup agent to seed extraction prompts, taxonomy, playbook memory, and review priorities.</p>
+              </div>
+              <button id="saveInterviewBtn" type="button">Save Memory</button>
+            </div>
+            <div class="interviewLayout">
+              <section class="chatPanel" aria-label="Agent interview chat">
+                <div id="interviewChat" class="chatTranscript"></div>
+                <div class="chatComposer">
+                  <input id="interviewChatInput" placeholder="Answer the agent's current question">
+                  <button id="interviewSendBtn" type="button">Send</button>
+                </div>
+              </section>
+              <aside class="queueDetail">
+                <div class="queueDetailHeader">
+                  <h3>Interview Memory</h3>
+                  <span id="interviewReadiness" class="badge warn">Draft</span>
+                </div>
+                <div id="interviewMemorySummary" class="detailFields"></div>
+                <div class="detailSection">
+                  <strong>Next Questions</strong>
+                </div>
+                <div id="interviewQuestions" class="rows"></div>
+              </aside>
+            </div>
+          </section>
+          <section class="panel roadmapDoc">
+            <h3>Executable User Stories</h3>
+            <div id="interviewStories" class="denseTable"></div>
+          </section>
+        </section>
+
+        <section id="pipeline" class="view">
+          <section class="panel">
+            <h3>End-to-End Flow</h3>
+            <div id="pipelineSummary" class="queueSummary"></div>
+            <div id="pipelineRows" class="denseTable"></div>
+          </section>
+        </section>
+
+        <section id="intelligence" class="view">
+          <section class="panel">
+            <h3>Intelligence Graph</h3>
+            <div id="intelligenceSummary" class="queueSummary"></div>
+            <div class="intelligenceStack">
+              <section>
+                <h4>Answerable Questions</h4>
+                <div id="questionRows" class="denseTable"></div>
+              </section>
+              <section>
+                <h4>Contract Mix</h4>
+                <div id="contractMixRows" class="denseTable"></div>
+              </section>
+              <section>
+                <h4>Clause Prevalence</h4>
+                <div id="clausePrevalenceRows" class="denseTable"></div>
+              </section>
+              <section>
+                <h4>Missing Field Hotspots</h4>
+                <div id="missingFieldRows" class="denseTable"></div>
+              </section>
+            </div>
+          </section>
+        </section>
+
+        <section id="documents" class="view">
+          <div id="documentList" class="docList"></div>
+        </section>
+
+        <section id="queue" class="view">
+          <section class="panel">
+            <div class="coverHeader">
+              <div>
+                <h3>Evidence-Backed Hypotheses</h3>
+                <p class="muted">Scan candidate classifications, model confidence, agent flags, evidence gaps, and benchmark misses before assigning review.</p>
+              </div>
+            </div>
+            <div class="queueToolbar">
+              <label>Search
+                <input id="queueSearch" placeholder="title, type, source, engine">
+              </label>
+              <label>Status
+                <select id="queueStatus">
+                  <option value="">All</option>
+                  <option value="reviewed">Reviewed</option>
+                  <option value="needs_review">Needs Review</option>
+                  <option value="agent_flag">Agent Flag</option>
+                  <option value="miss">Benchmark Miss</option>
+                </select>
+              </label>
+              <label>Type
+                <select id="queueType">
+                  <option value="">All types</option>
+                </select>
+              </label>
+              <label>Sort
+                <select id="queueSort">
+                  <option value="title">Document</option>
+                  <option value="type">Reviewed Type</option>
+                  <option value="agent_priority">Agent Priority</option>
+                  <option value="cover_after">Coversheet</option>
+                  <option value="clause_after">Clause F1</option>
+                  <option value="source_path">Source</option>
+                </select>
+              </label>
+              <label>Dir
+                <select id="queueDir">
+                  <option value="asc">Asc</option>
+                  <option value="desc">Desc</option>
+                </select>
+              </label>
+            </div>
+            <div class="quickViews" aria-label="Queue presets">
+              <button type="button" data-queue-preset="all">All</button>
+              <button type="button" data-queue-preset="agent_flag">Agent Flags</button>
+              <button type="button" data-queue-preset="miss">Benchmark Misses</button>
+              <button type="button" data-queue-preset="needs_review">Needs Review</button>
+              <button type="button" data-queue-preset="lowest_clause">Lowest Clause F1</button>
+              <button id="queueExport" type="button">Export CSV</button>
+            </div>
+            <div id="queueSummary" class="queueSummary"></div>
+            <div class="pager">
+              <label>Rows
+                <select id="queuePageSize">
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </label>
+              <button id="queuePrev" type="button">Previous</button>
+              <span id="queuePageInfo"></span>
+              <button id="queueNext" type="button">Next</button>
+            </div>
+            <div class="queueLayout">
+              <div id="queueTable" class="denseTable"></div>
+              <aside id="queueDetail" class="queueDetail"></aside>
+            </div>
+          </section>
+        </section>
+
+        <section id="workbench" class="view">
+          <section class="panel">
+            <div class="coverHeader">
+              <div>
+                <h3>Authority-Aware Review</h3>
+                <p class="muted">Validate business-level outputs: contract type, coversheet fields, key clause families, evidence, and reviewer authority.</p>
+              </div>
+            </div>
+            <div class="queueToolbar workbenchToolbar">
+              <label>Search
+                <input id="workbenchSearch" placeholder="document, field, clause, evidence">
+              </label>
+              <label>Mode
+                <select id="workbenchMode">
+                  <option value="coversheet">Coversheet Fields</option>
+                  <option value="clauses">Clause Evidence</option>
+                </select>
+              </label>
+              <label>Status
+                <select id="workbenchStatus">
+                  <option value="">All</option>
+                  <option value="has_evidence">Has Evidence</option>
+                  <option value="needs_evidence">Needs Evidence</option>
+                  <option value="agent_flag">Agent Flag</option>
+                  <option value="miss">Benchmark Miss</option>
+                </select>
+              </label>
+              <label>Type
+                <select id="workbenchType">
+                  <option value="">All types</option>
+                </select>
+              </label>
+              <label>Sort
+                <select id="workbenchSort">
+                  <option value="title">Document</option>
+                  <option value="contract_type">Type</option>
+                  <option value="label">Field/Family</option>
+                  <option value="value">Value</option>
+                  <option value="evidence_status">Evidence</option>
+                  <option value="authority">Authority</option>
+                </select>
+              </label>
+              <label>Dir
+                <select id="workbenchDir">
+                  <option value="asc">Asc</option>
+                  <option value="desc">Desc</option>
+                </select>
+              </label>
+            </div>
+            <div class="quickViews" aria-label="Workbench presets">
+              <button type="button" data-workbench-preset="all">All</button>
+              <button type="button" data-workbench-preset="needs_evidence">Needs Evidence</button>
+              <button type="button" data-workbench-preset="agent_flag">Agent Flags</button>
+              <button type="button" data-workbench-preset="miss">Benchmark Misses</button>
+              <button type="button" data-workbench-preset="clauses">Clause Evidence</button>
+              <button id="workbenchExport" type="button">Export CSV</button>
+            </div>
+            <div id="workbenchSummary" class="queueSummary"></div>
+            <div class="pager">
+              <label>Rows
+                <select id="workbenchPageSize">
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </label>
+              <button id="workbenchPrev" type="button">Previous</button>
+              <span id="workbenchPageInfo"></span>
+              <button id="workbenchNext" type="button">Next</button>
+            </div>
+            <div class="workbenchLayout">
+              <div id="workbenchTable" class="denseTable"></div>
+              <aside id="workbenchDetail" class="queueDetail"></aside>
+            </div>
+          </section>
+        </section>
+
+        <section id="corpus" class="view">
+          <div class="split">
+            <section class="panel">
+              <h3>Corpus Intake</h3>
+              <p class="muted">The BRD target is messy PDFs and graph creation. This POC currently uses public CUAD text contracts; PDF OCR is an explicit future step.</p>
+              <div id="ingestSummary" class="rows"></div>
+            </section>
+            <section class="panel">
+              <h3>Input Files</h3>
+              <div id="ingestFiles" class="rows"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="coversheets" class="view">
+          <div id="coversheetList" class="coverList"></div>
+        </section>
+
+        <section id="review" class="view">
+          <div class="toolbar">
+            <button class="action" data-action="review-packet">Refresh Packet</button>
+            <button class="action" data-action="agent-analyze">Agent Analyze</button>
+            <button class="action" data-action="cuad-gold">Autofill CUAD Labels</button>
+            <button id="saveReviewBtn">Save Review Edits</button>
+            <button class="action" data-action="apply-review">Apply Review</button>
+            <button class="action" data-action="second-run">Run Second Pass</button>
+            <button class="action" data-action="benchmark">Benchmark</button>
+            <button class="action" data-action="demo-report">Report</button>
+          </div>
+          <div class="split">
+            <section class="panel">
+              <h3>Review Packet</h3>
+              <div id="reviewItems" class="rows"></div>
+            </section>
+            <section class="panel">
+              <h3>Clause Evidence</h3>
+              <div id="clauseItems" class="rows"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="agent" class="view">
+          <div class="toolbar">
+            <button class="action" data-action="agent-analyze">Run Agent Analysis</button>
+            <button class="action" data-action="review-packet">Rebuild Review Packet</button>
+          </div>
+          <section class="panel">
+            <h3>Agentic Review Findings</h3>
+            <div id="agentFindings" class="rows"></div>
+          </section>
+        </section>
+
+        <section id="clauses" class="view">
+          <section class="panel">
+            <h3>Clause Library</h3>
+            <div id="clauseLibrary" class="rows"></div>
+          </section>
+        </section>
+
+        <section id="provenance" class="view">
+          <section class="panel">
+            <h3>Document Lineage</h3>
+            <div id="provenanceRows" class="rows"></div>
+          </section>
+        </section>
+
+        <section id="demo" class="view">
+          <div class="split">
+            <section class="panel">
+              <h3>Talk Track</h3>
+              <div id="demoScript" class="rows"></div>
+            </section>
+            <section class="panel">
+              <h3>Boundaries</h3>
+              <div id="demoBoundaries" class="rows"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="report" class="view">
+          <div class="split">
+            <section class="panel">
+              <h3>Stakeholder Report</h3>
+              <div id="reportMarkdown" class="reportMarkdown"></div>
+            </section>
+            <section class="panel">
+              <h3>Output Files</h3>
+              <div id="outputFiles" class="rows"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="memory" class="view">
+          <div class="split">
+            <section class="panel">
+              <h3>Taxonomy</h3>
+              <div id="taxonomyTypes" class="chips"></div>
+            </section>
+            <section class="panel">
+              <h3>Reviewed Examples</h3>
+              <div id="examples" class="rows"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="training" class="view">
+          <section class="panel">
+            <h3>Exported Reviewed Examples</h3>
+            <div id="trainingPairs" class="rows"></div>
+          </section>
+        </section>
+
+        <section id="brd" class="view">
+          <section class="panel">
+            <h3>BRD Coverage</h3>
+            <div id="brdCoverage" class="rows"></div>
+          </section>
+        </section>
+
+        <section id="roadmap" class="view">
+          <section class="panel">
+            <h3>Scale Roadmap</h3>
+            <div id="roadmapRows" class="denseTable"></div>
+          </section>
+          <section class="panel roadmapDoc">
+            <h3>Roadmap Notes</h3>
+            <div id="roadmapMarkdown" class="reportMarkdown"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

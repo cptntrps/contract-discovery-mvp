@@ -1,0 +1,14 @@
+[project]
+name = "contract-intelligence-mvp"
+version = "0.1.0"
+description = "Standalone Code Games MVP for agentic contract corpus discovery"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+contract-intel = "contract_intel_mvp.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
