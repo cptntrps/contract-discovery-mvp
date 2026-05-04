@@ -74,6 +74,8 @@ def main() -> None:
 
     sub.add_parser("cuad-apply-gold", help="Apply CUAD expert labels to the pending review packet")
 
+    sub.add_parser("cuad-apply-holdout-gold", help="Project CUAD gold onto holdout split for the three-way benchmark")
+
     second = sub.add_parser("second-run", help="Run extraction with reviewed taxonomy context")
     second.add_argument("--model", default="qwen3:4b")
 
@@ -138,6 +140,10 @@ def main() -> None:
         print(json.dumps(result, indent=2))
     elif args.command == "cuad-apply-gold":
         result = apply_cuad_gold_review(Path.cwd())
+        print(json.dumps(result, indent=2))
+    elif args.command == "cuad-apply-holdout-gold":
+        from .pipeline import cuad_apply_holdout_gold
+        result = cuad_apply_holdout_gold(Path.cwd())
         print(json.dumps(result, indent=2))
     elif args.command == "second-run":
         result = run_extraction(Path.cwd(), model=args.model, mode="second")

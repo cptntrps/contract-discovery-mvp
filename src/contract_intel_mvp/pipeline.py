@@ -1653,3 +1653,25 @@ def extract_holdout_cold(root: Path, *, shadow_model: str) -> dict:
     (root / "data" / "runs" / "shadow_holdout_cold_results.json").write_text(
         json.dumps(rows, indent=2), encoding="utf-8")
     return {"n": len(rows)}
+
+
+def cuad_apply_holdout_gold(root: Path) -> dict[str, Any]:
+    """Project CUAD gold labels onto holdout doc_ids in the shape three_way expects."""
+    from contract_intel_mvp.splits import load_splits
+    splits = load_splits(root)
+    holdout_ids = set(splits["holdout_set"])
+    gold = _load_json(root / "data" / "gold" / "cuad_review_labels.json", {"items": []})
+    rows = []
+    for item in gold.get("items", []):
+        if item["doc_id"] not in holdout_ids:
+            continue
+        rows.append({
+            "doc_id": item["doc_id"],
+            "accepted_contract_type": item["contract_type"],
+            "accepted_coversheet": item.get("coversheet", {}),
+            "accepted_key_clauses": item.get("key_clauses", []),
+        })
+    out = root / "data" / "reviews" / "holdout_gold.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(rows, indent=2), encoding="utf-8")
+    return {"holdout_gold": str(out), "n": len(rows)}
