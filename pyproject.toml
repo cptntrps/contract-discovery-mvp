@@ -12,3 +12,11 @@ contract-intel = "contract_intel_mvp.cli:main"
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "httpx", "fastapi"]
+
