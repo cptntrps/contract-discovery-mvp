@@ -2318,9 +2318,11 @@ function escape(value) {
     if (progress) progress.textContent = `Queued. Reading up to ${topK} contracts. Each takes ~3 seconds.`;
     setText("discRoundResult", "");
     try {
+      const modelEl = $id("discClassifierModel");
+      const classifier = (modelEl && modelEl.value) || "gpt-4o-mini";
       const start = await pj("/api/discovery/run-round",
                              {round_index: idx, top_k: topK, batch_size: batch,
-                              classifier_model: "qwen3:4b", async: true});
+                              classifier_model: classifier, async: true});
       if (!start.job_id) {
         if (progress) progress.textContent = "Error starting job: " + JSON.stringify(start);
         return;

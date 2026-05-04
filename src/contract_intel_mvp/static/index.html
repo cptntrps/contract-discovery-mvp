@@ -582,6 +582,21 @@
 
                 <div>
                   <label style="display: flex; align-items: center; gap: 8px; font-weight: 650;">
+                    Classifier model
+                    <select id="discClassifierModel" style="font-size: 12px; padding: 3px 6px;">
+                      <option value="gpt-4o-mini">gpt-4o-mini (OpenAI, fast, ~$0.01/100 docs) — DEMO DEFAULT</option>
+                      <option value="gpt-5-mini">gpt-5-mini (OpenAI, slower, smarter)</option>
+                      <option value="qwen3:4b">qwen3:4b (local Ollama, free, fast)</option>
+                      <option value="qwen2.5:14b">qwen2.5:14b (local Ollama, free, sharper)</option>
+                    </select>
+                  </label>
+                  <p style="margin: 4px 0 0 0; color: #666; font-size: 11px;">
+                    Which model decides yes/no on each candidate. OpenAI = predictable wall-clock, tiny cost. Local Ollama = free + private but slower first call (cold start). For stage demos, gpt-4o-mini.
+                  </p>
+                </div>
+
+                <div>
+                  <label style="display: flex; align-items: center; gap: 8px; font-weight: 650;">
                     How many to review
                     <input id="discBatch" type="number" value="30" style="width: 70px;" />
                   </label>
