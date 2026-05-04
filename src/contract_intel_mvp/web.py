@@ -88,10 +88,29 @@ def build_app(root: Path):
 
     DISCOVERY_SYSTEM_PROMPT = (
         "You are a discovery interview agent. Help the user define ONE target contract "
-        "class. Build a structured signature with clause TYPES, each with a "
-        "description, is_must_have flag, and 1-2 example phrasings. Ask focused "
-        "follow-ups about defining clauses and what should be excluded. Output strict "
-        "JSON only."
+        "class so we can find instances of it in a haystack. Build a structured "
+        "signature progressively over 3-5 turns. DO NOT finalize the whole signature "
+        "on the user's first message.\n\n"
+        "On each turn: ask ONE focused follow-up question; add 1-2 clause types based "
+        "on the user's latest answer; keep ready_to_save=false until you have asked "
+        "about disqualifying clauses AND the user has confirmed the signature is "
+        "complete.\n\n"
+        "CRITICAL — is_must_have semantics:\n"
+        "  is_must_have=true: defining clauses that MUST appear for the doc to belong "
+        "to the class (e.g. for License Agreement: license-grant, scope, royalty/fee).\n"
+        "  is_must_have=false: clauses whose PRESENCE AS THE PRIMARY PURPOSE "
+        "DISQUALIFIES the doc — i.e. competing-type signatures. NOT 'clauses to avoid' "
+        "or 'clauses we don't care about'. For License Agreement, must-not-have should "
+        "be things like 'primary distribution appointment', 'joint venture formation', "
+        "'agency appointment', 'employment terms'.\n"
+        "  DO NOT put commonly co-occurring clauses (confidentiality, governing law, "
+        "notices, dispute resolution, indemnification) into is_must_have=false. "
+        "Those are neutral and should be omitted from the signature entirely.\n\n"
+        "Question order: (1) target class + one-sentence purpose; (2) single most "
+        "defining clause + example phrasing; (3) other 1-2 required clauses; (4) what "
+        "competing contract types look similar but are NOT this — give an example of "
+        "their primary-purpose clauses; (5) confirm signature before ready_to_save=true.\n\n"
+        "Output strict JSON only."
     )
 
     @app.post("/api/interview/discovery-chat")
@@ -137,7 +156,7 @@ def build_app(root: Path):
                     {"role": "system", "content": DISCOVERY_SYSTEM_PROMPT},
                     {"role": "user", "content": json.dumps(prompt, indent=2)},
                 ],
-                "max_tokens": 800,
+                "max_completion_tokens": 1500,
                 "response_format": {"type": "json_object"},
             }
             request = urllib.request.Request(
@@ -301,10 +320,29 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
         )
         DISCOVERY_SYSTEM_PROMPT = (
             "You are a discovery interview agent. Help the user define ONE target contract "
-            "class. Build a structured signature with clause TYPES, each with a "
-            "description, is_must_have flag, and 1-2 example phrasings. Ask focused "
-            "follow-ups about defining clauses and what should be excluded. Output strict "
-            "JSON only."
+            "class so we can find instances of it in a haystack. Build a structured "
+            "signature progressively over 3-5 turns. DO NOT finalize the whole signature "
+            "on the user's first message.\n\n"
+            "On each turn: ask ONE focused follow-up question; add 1-2 clause types based "
+            "on the user's latest answer; keep ready_to_save=false until you have asked "
+            "about disqualifying clauses AND the user has confirmed the signature is "
+            "complete.\n\n"
+            "CRITICAL — is_must_have semantics:\n"
+            "  is_must_have=true: defining clauses that MUST appear for the doc to belong "
+            "to the class (e.g. for License Agreement: license-grant, scope, royalty/fee).\n"
+            "  is_must_have=false: clauses whose PRESENCE AS THE PRIMARY PURPOSE "
+            "DISQUALIFIES the doc — i.e. competing-type signatures. NOT 'clauses to avoid' "
+            "or 'clauses we don't care about'. For License Agreement, must-not-have should "
+            "be things like 'primary distribution appointment', 'joint venture formation', "
+            "'agency appointment', 'employment terms'.\n"
+            "  DO NOT put commonly co-occurring clauses (confidentiality, governing law, "
+            "notices, dispute resolution, indemnification) into is_must_have=false. "
+            "Those are neutral and should be omitted from the signature entirely.\n\n"
+            "Question order: (1) target class + one-sentence purpose; (2) single most "
+            "defining clause + example phrasing; (3) other 1-2 required clauses; (4) what "
+            "competing contract types look similar but are NOT this — give an example of "
+            "their primary-purpose clauses; (5) confirm signature before ready_to_save=true.\n\n"
+            "Output strict JSON only."
         )
 
         if initial:
@@ -343,7 +381,7 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
                     {"role": "system", "content": DISCOVERY_SYSTEM_PROMPT},
                     {"role": "user", "content": json.dumps(prompt, indent=2)},
                 ],
-                "max_tokens": 800,
+                "max_completion_tokens": 1500,
                 "response_format": {"type": "json_object"},
             }
             request = urllib.request.Request(
@@ -1128,7 +1166,7 @@ def _call_openai_interview(
             },
             {"role": "user", "content": json.dumps(prompt, indent=2)},
         ],
-        "max_tokens": 600,
+        "max_completion_tokens": 1500,
         "response_format": {"type": "json_object"},
     }
     request = urllib.request.Request(
