@@ -5,6 +5,17 @@ from __future__ import annotations
 from typing import Any
 
 
+REGROUND_PROMPT = """You previously extracted clauses from this contract, but the following clause families had evidence quotes that do NOT appear verbatim in the source: {missing_families}.
+
+Re-extract ONLY those clause families. Each evidence_snippet MUST be an exact substring of the source. If you cannot find a verbatim quote, return null for that family.
+
+Source text:
+{source_text}
+
+Return JSON: {{"key_clauses": [{{"family": "<family>", "evidence_snippet": "<exact substring or null>"}}]}}
+"""
+
+
 def build_extraction_prompt(
     *,
     interview: dict[str, Any],
