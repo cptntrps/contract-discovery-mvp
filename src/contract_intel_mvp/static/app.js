@@ -52,12 +52,12 @@ const titles = {
 };
 
 const workflowSteps = [
-  ["interview", "1", "Setup", "SME interview and scope"],
-  ["corpus", "2", "Corpus", "Ingest and readiness"],
-  ["queue", "3", "Hypotheses", "Classify with evidence"],
-  ["workbench", "4", "Review", "Correct with authority"],
-  ["intelligence", "5", "Intelligence", "Taxonomy and clauses"],
-  ["overview", "6", "Benchmark", "Before and after"]
+  ["step-corpus",   "1", "Corpus",    "Drop your contracts and embed"],
+  ["step-define",   "2", "Define",    "Tell the agent what to look for"],
+  ["step-classify", "3", "Classify",  "Rank and run a round"],
+  ["step-review",   "4", "Review",    "Confirm borderline cases"],
+  ["step-library",  "5", "Library",   "Clause language the agent learned"],
+  ["step-results",  "6", "Results",   "Final list with confidence"]
 ];
 
 const brdCoverage = [
@@ -206,15 +206,18 @@ function render() {
 }
 
 function renderWorkflowProgress() {
-  html("workflowSteps", workflowSteps.map(([view, number, label, detail]) => `
-    <button type="button" class="workflowStep ${document.getElementById(view)?.classList.contains("active") ? "active" : ""}" data-view="${escape(view)}">
+  html("workflowSteps", workflowSteps.map(([anchor, number, label, detail]) => `
+    <button type="button" class="workflowStep" data-anchor="${escape(anchor)}">
       <span>${escape(number)}</span>
       <strong>${escape(label)}</strong>
       <small>${escape(detail)}</small>
     </button>
   `).join(""));
   document.querySelectorAll(".workflowStep").forEach((button) => {
-    button.addEventListener("click", () => setView(button.dataset.view));
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.anchor);
+      if (target) target.scrollIntoView({behavior: "smooth", block: "start"});
+    });
   });
 }
 

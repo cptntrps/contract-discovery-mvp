@@ -495,7 +495,7 @@
           </section>
         </section>
         <section id="discovery" class="view active">
-          <section class="panel">
+          <section id="step-corpus" class="panel">
             <h3>1. Drop your contracts</h3>
             <div id="discDropzone" style="border: 2px dashed #ccc; padding: 30px; text-align: center; background: #fafafa; border-radius: 8px;">
               <p>Drop a folder of contracts here</p>
@@ -509,7 +509,7 @@
                <span id="discEmbedStatus" style="margin-left: 12px; font-family: monospace;"></span></p>
           </section>
 
-          <section class="panel">
+          <section id="step-define" class="panel">
             <div class="coverHeader">
               <div>
                 <h3>2. Tell the agent what you're looking for</h3>
@@ -549,7 +549,7 @@
             </div>
           </section>
 
-          <section class="panel">
+          <section id="step-classify" class="panel">
             <h3>3. Run a round</h3>
             <p>
               <label>Round <input id="discRoundIdx" type="number" value="0" style="width: 50px;"/></label>
@@ -560,19 +560,19 @@
             <pre id="discRoundResult" style="font-size: 12px; background: #fafafa; padding: 8px;"></pre>
           </section>
 
-          <section class="panel">
+          <section id="step-review" class="panel">
             <h3>4. Review borderline cases</h3>
             <div id="discReviewQueue"></div>
             <p><button id="discSubmitLabels" type="button">Submit labels for this round</button></p>
           </section>
 
-          <section class="panel">
+          <section id="step-library" class="panel">
             <h3>5. Clause library — the artifact</h3>
             <p>Every confirmed contract contributes verbatim quotes to this library, organized by clause type. This is what the agent has learned.</p>
             <div id="discLibrary" style="font-size: 12px;"></div>
           </section>
 
-          <section class="panel">
+          <section id="step-results" class="panel">
             <h3>6. Final output</h3>
             <p><button id="discFinalizeBtn" type="button">Finalize</button></p>
             <pre id="discFinalResult" style="font-size: 12px; background: #fafafa; padding: 8px;"></pre>
