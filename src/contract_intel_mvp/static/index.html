@@ -24,6 +24,7 @@
           <button class="nav" data-view="intelligence">5. Intelligence</button>
           <button class="nav" data-view="overview">6. Benchmark</button>
           <button class="nav" data-view="agent">7. Agent</button>
+          <button class="nav" data-view="discovery">Discovery</button>
         </nav>
       </aside>
 
@@ -488,6 +489,68 @@
           <section class="panel roadmapDoc">
             <h3>Roadmap Notes</h3>
             <div id="roadmapMarkdown" class="reportMarkdown"></div>
+          </section>
+        </section>
+        <section id="discovery" class="view">
+          <section class="panel">
+            <h3>1. Drop your contracts</h3>
+            <div id="discDropzone" style="border: 2px dashed #ccc; padding: 30px; text-align: center; background: #fafafa; border-radius: 8px;">
+              <p>Drop a folder of contracts here</p>
+              <label style="cursor: pointer; padding: 8px 16px; background: #4a7; color: white; border-radius: 4px;">
+                Choose folder
+                <input id="discFolderInput" type="file" multiple webkitdirectory directory style="display: none;" />
+              </label>
+            </div>
+            <div id="discUploadStatus" style="font-family: monospace; padding: 8px;"></div>
+            <p><button id="discEmbedBtn" type="button">Embed corpus</button>
+               <span id="discEmbedStatus" style="margin-left: 12px; font-family: monospace;"></span></p>
+          </section>
+
+          <section class="panel">
+            <h3>2. Define what you're looking for</h3>
+            <div id="discChat" style="max-height: 320px; overflow: auto; border: 1px solid #eee; padding: 8px; margin-bottom: 8px; background: white;"></div>
+            <div style="display: flex; gap: 8px;">
+              <input id="discChatInput" placeholder="e.g. I'm looking for license agreements..." style="flex: 1;" />
+              <button id="discChatSend" type="button">Send</button>
+            </div>
+            <details style="margin-top: 12px;"><summary>Current signature (advanced)</summary>
+              <pre id="discSignaturePreview" style="font-size: 11px; background: #fafafa; padding: 8px;"></pre>
+            </details>
+            <p style="margin-top: 8px;"><button id="discSaveSig" type="button">Save signature & start discovery</button></p>
+          </section>
+
+          <section class="panel">
+            <h3>3. Run a round</h3>
+            <p>
+              <label>Round <input id="discRoundIdx" type="number" value="0" style="width: 50px;"/></label>
+              <label>Top-K <input id="discTopK" type="number" value="200" style="width: 80px;"/></label>
+              <label>Batch <input id="discBatch" type="number" value="20" style="width: 50px;"/></label>
+              <button id="discRunRoundBtn" type="button">Run round</button>
+            </p>
+            <pre id="discRoundResult" style="font-size: 12px; background: #fafafa; padding: 8px;"></pre>
+          </section>
+
+          <section class="panel">
+            <h3>4. Review borderline cases</h3>
+            <div id="discReviewQueue"></div>
+            <p><button id="discSubmitLabels" type="button">Submit labels for this round</button></p>
+          </section>
+
+          <section class="panel">
+            <h3>5. Clause library — the artifact</h3>
+            <p>Every confirmed contract contributes verbatim quotes to this library, organized by clause type. This is what the agent has learned.</p>
+            <div id="discLibrary" style="font-size: 12px;"></div>
+          </section>
+
+          <section class="panel">
+            <h3>6. Final output</h3>
+            <p><button id="discFinalizeBtn" type="button">Finalize</button></p>
+            <pre id="discFinalResult" style="font-size: 12px; background: #fafafa; padding: 8px;"></pre>
+          </section>
+
+          <section class="panel">
+            <h3>State</h3>
+            <pre id="discStateJson" style="font-size: 11px; background: #fafafa; padding: 8px;"></pre>
           </section>
         </section>
       </main>
