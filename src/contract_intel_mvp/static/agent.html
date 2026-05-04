@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Agent Edition - Contract Intelligence</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 24px; max-width: 1100px; }
+  h1 { margin-top: 0; }
+  h2 { border-top: 1px solid #ddd; padding-top: 16px; margin-top: 24px; }
+  .banner { padding: 8px 12px; background: #f4f4f4; border-radius: 4px; margin: 12px 0; font-family: monospace; }
+  .banner.ok { background: #e6ffe6; }
+  .banner.bad { background: #ffe6e6; }
+  table { border-collapse: collapse; margin: 8px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 12px; text-align: left; }
+  th { background: #f4f4f4; }
+  pre { background: #fafafa; border: 1px solid #eee; padding: 12px; max-height: 60vh; overflow: auto; font-size: 12px; }
+  button { padding: 6px 14px; margin-right: 8px; cursor: pointer; }
+  input { padding: 4px 8px; margin-right: 8px; }
+</style>
+</head>
+<body>
+<h1>Agent Edition</h1>
+<p>Decision log + three-way benchmark + counterfactual toggles.</p>
+
+<h2>Agent Decisions</h2>
+<input id="decisions-run-id" placeholder="run_id (or leave blank for all)" size="40" />
+<button id="decisions-load">Load</button>
+<button id="decisions-auto">Auto-refresh: ON</button>
+<pre id="decisions-log">(no decisions loaded)</pre>
+
+<h2>Three-Way Benchmark</h2>
+<div id="bench-banner" class="banner">(load benchmark)</div>
+<table id="bench-table"></table>
+<button id="bench-load">Refresh</button>
+
+<h3>Counterfactuals</h3>
+<button id="cf-verifier">Verifier OFF</button>
+<button id="cf-context">Reviewed-context OFF</button>
+<pre id="cf-result">(click a counterfactual to recompute)</pre>
+
+<script>
+async function loadDecisions() {
+  const runId = document.getElementById('decisions-run-id').value;
+  const url = runId ? '/api/decisions?run_id=' + encodeURIComponent(runId) : '/api/decisions';
+  try {
+    const res = await fetch(url).then(function(r){ return r.json(); });
+    const lines = (res.rows || []).map(function(r) {
+      var args = JSON.stringify(r.args || {}).slice(0, 60);
+      return r.ts + '  ' + (r.action + '').padEnd(28) + ' ' + args + '  ' + (r.rationale || '');
+    });
+    document.getElementById('decisions-log').textContent = lines.length ? lines.join('\n') : '(no decisions yet)';
+  } catch (e) {
+    document.getElementById('decisions-log').textContent = 'error: ' + e;
+  }
+}
+
+async function loadBench() {
+  const banner = document.getElementById('bench-banner');
+  const table = document.getElementById('bench-table');
+  while (table.firstChild) table.removeChild(table.firstChild);
+  try {
+    const b = await fetch('/api/benchmark/three-way').then(function(r){ return r.json(); });
+    banner.className = 'banner ' + (b.engine_integrity === 'ok' ? 'ok' : 'bad');
+    banner.textContent = 'Engine integrity: ' + b.engine_integrity + '  |  n=' + (b.n_docs || 0);
+    if (!b.metrics) return;
+    const cols = ['large', 'small_cold', 'small_reviewed'];
+    const metrics = ['contract_type_accuracy', 'clause_family_f1'];
+    const head = document.createElement('tr');
+    const th0 = document.createElement('th'); th0.textContent = 'metric'; head.appendChild(th0);
+    cols.forEach(function(c){ const th = document.createElement('th'); th.textContent = c; head.appendChild(th); });
+    table.appendChild(head);
+    metrics.forEach(function(m) {
+      const tr = document.createElement('tr');
+      const td0 = document.createElement('td'); td0.textContent = m; tr.appendChild(td0);
+      cols.forEach(function(c) {
+        const td = document.createElement('td');
+        const v = (b.metrics[m] && b.metrics[m][c]) || 0;
+        td.textContent = (typeof v === 'number') ? v.toFixed(2) : String(v);
+        tr.appendChild(td);
+      });
+      table.appendChild(tr);
+    });
+  } catch (e) {
+    banner.className = 'banner bad';
+    banner.textContent = 'error: ' + e;
+  }
+}
+
+async function cf(toggle) {
+  try {
+    const out = await fetch('/api/benchmark/counterfactual', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({toggle: toggle, model: 'qwen3:4b'})
+    }).then(function(r){ return r.json(); });
+    document.getElementById('cf-result').textContent = JSON.stringify(out, null, 2);
+  } catch (e) {
+    document.getElementById('cf-result').textContent = 'error: ' + e;
+  }
+}
+
+document.getElementById('decisions-load').addEventListener('click', loadDecisions);
+document.getElementById('bench-load').addEventListener('click', loadBench);
+document.getElementById('cf-verifier').addEventListener('click', function(){ cf('verifier_off'); });
+document.getElementById('cf-context').addEventListener('click', function(){ cf('context_off'); });
+
+let autoTimer = setInterval(loadDecisions, 2000);
+document.getElementById('decisions-auto').addEventListener('click', function() {
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; this.textContent = 'Auto-refresh: OFF'; }
+  else { autoTimer = setInterval(loadDecisions, 2000); this.textContent = 'Auto-refresh: ON'; }
+});
+
+loadDecisions();
+loadBench();
+</script>
+</body>
+</html>

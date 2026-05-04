@@ -26,9 +26,45 @@ from .pipeline import (
     run_extraction,
     save_interview_payload,
 )
+from .agent.decisions import DecisionLog
+from .benchmark.counterfactual import (
+    recompute_without_verification, recompute_without_reviewed_context,
+)
 
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+
+def build_app(root: Path):
+    """Return a FastAPI app exposing the agent-edition endpoints. Used by tests and as
+    a programmatic API. The CLI's `run_server` keeps using the http.server-based UI
+    below, which mirrors the same endpoints so the demo can run without uvicorn."""
+    from fastapi import FastAPI
+    app = FastAPI()
+    root = root.resolve()
+
+    @app.get("/api/decisions")
+    def get_decisions(run_id: str | None = None):
+        rows = list(DecisionLog.iter(root, run_id=run_id))
+        return {"rows": rows}
+
+    @app.get("/api/benchmark/three-way")
+    def benchmark_three_way():
+        p = root / "data" / "runs" / "benchmark.json"
+        if not p.exists():
+            return {"engine_integrity": "missing"}
+        return json.loads(p.read_text())
+
+    @app.post("/api/benchmark/counterfactual")
+    def counterfactual(payload: dict):
+        toggle = payload.get("toggle")
+        if toggle == "verifier_off":
+            return recompute_without_verification(root, model=payload.get("model", "qwen3:4b"))
+        if toggle == "context_off":
+            return recompute_without_reviewed_context(root)
+        return {"error": "unknown toggle: " + str(toggle)}
+
+    return app
 
 
 def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None:
@@ -67,6 +103,18 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
                 self._send_json(_ui_state(root))
             elif parsed.path == "/api/file":
                 self._send_artifact(root, parsed.query)
+            elif parsed.path == "/agent":
+                self._send_file(STATIC_DIR / "agent.html", "text/html; charset=utf-8")
+            elif parsed.path == "/api/decisions":
+                run_id = parse_qs(parsed.query).get("run_id", [None])[0]
+                rows = list(DecisionLog.iter(root, run_id=run_id))
+                self._send_json({"rows": rows})
+            elif parsed.path == "/api/benchmark/three-way":
+                p = root / "data" / "runs" / "benchmark.json"
+                if not p.exists():
+                    self._send_json({"engine_integrity": "missing"})
+                else:
+                    self._send_json(json.loads(p.read_text()))
             else:
                 self.send_error(404)
 
@@ -102,6 +150,15 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
                     self._send_json(generate_benchmark(root))
                 elif parsed.path == "/api/actions/demo-report":
                     self._send_json(generate_demo_report(root))
+                elif parsed.path == "/api/benchmark/counterfactual":
+                    payload = self._read_json()
+                    toggle = payload.get("toggle")
+                    if toggle == "verifier_off":
+                        self._send_json(recompute_without_verification(root, model=payload.get("model", "qwen3:4b")))
+                    elif toggle == "context_off":
+                        self._send_json(recompute_without_reviewed_context(root))
+                    else:
+                        self._send_json({"error": "unknown toggle: " + str(toggle)}, status=400)
                 else:
                     self.send_error(404)
             except Exception as exc:  # Keep UI errors visible instead of crashing server.
