@@ -2159,9 +2159,13 @@ function escape(value) {
     const types = $id("discClauseTypes");
     const readiness = $id("discReadiness");
     if (types) {
-      // Skip re-render if the user is currently editing one of the inputs inside a card.
+      // Skip re-render only when the user is currently TYPING in a text field
+      // inside a card (input/textarea). Buttons and selects don't count, so
+      // delete clicks always re-render.
       const focused = document.activeElement;
-      const focusedInsideTypes = focused && types.contains(focused);
+      const tag = focused && focused.tagName;
+      const focusedInsideTypes = focused && types.contains(focused) &&
+                                  (tag === "INPUT" || tag === "TEXTAREA");
       if (!focusedInsideTypes) {
         while (types.firstChild) types.removeChild(types.firstChild);
         const cts = currentSig.clause_types || [];
@@ -2214,9 +2218,16 @@ function escape(value) {
 
     const nameInput = document.createElement("input");
     nameInput.className = "clauseName";
+    nameInput.type = "text";
     nameInput.value = ct.type || "";
-    nameInput.style.flex = "1"; nameInput.style.fontSize = "12px";
-    nameInput.style.fontWeight = "650"; nameInput.style.padding = "3px 6px";
+    nameInput.placeholder = "clause name";
+    nameInput.style.flex = "1 1 auto";
+    nameInput.style.minWidth = "0";
+    nameInput.style.width = "100%";
+    nameInput.style.fontSize = "12px";
+    nameInput.style.fontWeight = "650";
+    nameInput.style.padding = "4px 8px";
+    nameInput.style.boxSizing = "border-box";
     nameInput.addEventListener("change", syncSigFromDOM);
     top.appendChild(nameInput);
 
@@ -2229,6 +2240,10 @@ function escape(value) {
       syncSigFromDOM();
       const removed = currentSig.clause_types.splice(idx, 1)[0];
       if (removed && removed.type) userDeletedClauseTypes.add(removed.type);
+      // Blur active element so renderSig isn't skipped by the focused-inside guard.
+      if (document.activeElement && document.activeElement.blur) {
+        document.activeElement.blur();
+      }
       renderSig();
     });
     top.appendChild(delBtn);
