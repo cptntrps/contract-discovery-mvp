@@ -159,6 +159,55 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
                         self._send_json(recompute_without_reviewed_context(root))
                     else:
                         self._send_json({"error": "unknown toggle: " + str(toggle)}, status=400)
+                elif parsed.path == "/api/upload":
+                    import base64, time, re
+                    payload = self._read_json()
+                    files = payload.get("files", [])
+                    if not files:
+                        self._send_json({"error": "no files"}, status=400); return
+                    upload_dir = root / "data" / "raw_contracts" / f"upload_{int(time.time())}"
+                    upload_dir.mkdir(parents=True, exist_ok=True)
+                    written = 0
+                    for f in files:
+                        name = f.get("filename", "")
+                        b64 = f.get("content_b64", "")
+                        if not name or not b64:
+                            continue
+                        safe = re.sub(r"[^A-Za-z0-9._-]", "_", Path(name).name)[:200]
+                        try:
+                            (upload_dir / safe).write_bytes(base64.b64decode(b64))
+                            written += 1
+                        except Exception:
+                            continue
+                    from .pipeline import ingest_folder
+                    ingested = ingest_folder(upload_dir, root)
+                    self._send_json({"received": written, "ingested": ingested,
+                                     "upload_dir": str(upload_dir.relative_to(root))})
+                elif parsed.path == "/api/split":
+                    payload = self._read_json()
+                    from .splits import make_splits
+                    out = make_splits(root,
+                                      review_frac=float(payload.get("review_frac", 0.6)),
+                                      seed=int(payload.get("seed", 42)))
+                    self._send_json(out)
+                elif parsed.path == "/api/agent/run" or parsed.path == "/api/agent/resume":
+                    payload = self._read_json()
+                    from .agent.planner import run_agent
+                    from .agent.wiring import build_registry
+                    import threading
+                    primary = str(payload.get("primary_model", "qwen2.5:14b"))
+                    shadow = str(payload.get("shadow_model", "qwen3:4b"))
+                    registry = build_registry()
+                    state = {"run_id": None}
+                    def _go():
+                        state["run_id"] = run_agent(root=root, registry=registry,
+                                                    primary_model=primary, shadow_model=shadow)
+                    t = threading.Thread(target=_go, daemon=True); t.start()
+                    self._send_json({"started": True, "primary_model": primary, "shadow_model": shadow,
+                                     "note": "agent running in background; tail /api/decisions for progress"})
+                elif parsed.path == "/api/cuad-apply-holdout-gold":
+                    from .pipeline import cuad_apply_holdout_gold
+                    self._send_json(cuad_apply_holdout_gold(root))
                 else:
                     self.send_error(404)
             except Exception as exc:  # Keep UI errors visible instead of crashing server.

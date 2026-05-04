@@ -1834,3 +1834,232 @@ function escape(value) {
     "'": "&#039;"
   }[char]));
 }
+
+// === Agent edition: upload, split, agent run, decision log, three-way benchmark, counterfactuals ===
+(function() {
+  function setText(id, txt) { const el = document.getElementById(id); if (el) el.textContent = txt; }
+  function readFileAsB64(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => {
+        const b64 = String(r.result).split(",")[1] || "";
+        resolve({ filename: file.webkitRelativePath || file.name, content_b64: b64 });
+      };
+      r.onerror = () => reject(r.error);
+      r.readAsDataURL(file);
+    });
+  }
+  async function postJson(url, body) {
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+    return r.json();
+  }
+  async function getJson(url) { const r = await fetch(url); return r.json(); }
+
+  async function uploadFiles(fileList) {
+    const accepted = /\.(txt|md|html?|docx|pdf)$/i;
+    const files = Array.from(fileList || []).filter(f => accepted.test(f.name));
+    if (files.length === 0) { setText("uploadStatus", "No accepted file types in selection."); return; }
+    setText("uploadStatus", `Reading ${files.length} files...`);
+    const payload = [];
+    for (let i = 0; i < files.length; i++) {
+      try { payload.push(await readFileAsB64(files[i])); }
+      catch (e) { /* skip unreadable */ }
+      if (i % 5 === 0) setText("uploadStatus", `Reading ${i + 1}/${files.length}...`);
+    }
+    setText("uploadStatus", `Uploading ${payload.length} files...`);
+    try {
+      const out = await postJson("/api/upload", { files: payload });
+      const results = document.getElementById("uploadResults");
+      if (results) {
+        results.textContent = "";
+        const div = document.createElement("div");
+        div.style.padding = "8px";
+        div.style.background = "#e6ffe6";
+        div.style.borderRadius = "4px";
+        div.textContent = `Ingested ${out.ingested} of ${out.received} files. Uploaded to ${out.upload_dir}.`;
+        results.appendChild(div);
+      }
+      setText("uploadStatus", "");
+    } catch (e) { setText("uploadStatus", "Upload error: " + e); }
+  }
+
+  function bindUpload() {
+    const folderInput = document.getElementById("uploadFolderInput");
+    const filesInput = document.getElementById("uploadFilesInput");
+    const dropzone = document.getElementById("uploadDropzone");
+    if (folderInput) folderInput.addEventListener("change", e => uploadFiles(e.target.files));
+    if (filesInput) filesInput.addEventListener("change", e => uploadFiles(e.target.files));
+    if (dropzone) {
+      ["dragover", "dragenter"].forEach(ev => dropzone.addEventListener(ev, e => {
+        e.preventDefault(); dropzone.style.background = "#eef9ee";
+      }));
+      ["dragleave", "drop"].forEach(ev => dropzone.addEventListener(ev, e => {
+        e.preventDefault(); dropzone.style.background = "#fafafa";
+      }));
+      dropzone.addEventListener("drop", async e => {
+        e.preventDefault();
+        const items = e.dataTransfer.items;
+        const collected = [];
+        async function walk(entry, prefix) {
+          if (!entry) return;
+          if (entry.isFile) {
+            await new Promise(res => entry.file(f => { f.relPath = prefix + f.name; collected.push(f); res(); }));
+          } else if (entry.isDirectory) {
+            const reader = entry.createReader();
+            await new Promise(res => reader.readEntries(async ents => {
+              for (const ent of ents) await walk(ent, prefix + entry.name + "/");
+              res();
+            }));
+          }
+        }
+        if (items && items[0] && items[0].webkitGetAsEntry) {
+          for (const it of items) await walk(it.webkitGetAsEntry(), "");
+          await uploadFiles(collected);
+        } else {
+          await uploadFiles(e.dataTransfer.files);
+        }
+      });
+    }
+  }
+
+  function bindSplit() {
+    const btn = document.getElementById("splitBtn");
+    if (!btn) return;
+    btn.addEventListener("click", async () => {
+      const frac = parseFloat(document.getElementById("splitFrac").value || "0.6");
+      const seed = parseInt(document.getElementById("splitSeed").value || "42", 10);
+      setText("splitStatus", "Splitting...");
+      try {
+        const out = await postJson("/api/split", { review_frac: frac, seed });
+        setText("splitStatus", `Split: ${out.review_set.length} review, ${out.holdout_set.length} holdout, seed=${out.split_seed}`);
+      } catch (e) { setText("splitStatus", "Split error: " + e); }
+    });
+  }
+
+  function bindAgent() {
+    const startBtn = document.getElementById("agentStartBtn");
+    const resumeBtn = document.getElementById("agentResumeBtn");
+    async function fire(url) {
+      const primary = document.getElementById("agentPrimary").value || "qwen2.5:14b";
+      const shadow = document.getElementById("agentShadow").value || "qwen3:4b";
+      setText("agentStatus", "Starting agent...");
+      try {
+        const out = await postJson(url, { primary_model: primary, shadow_model: shadow });
+        setText("agentStatus", `Agent ${out.started ? "started" : "?"} (primary=${out.primary_model}, shadow=${out.shadow_model}). Decision log streaming below.`);
+      } catch (e) { setText("agentStatus", "Agent error: " + e); }
+    }
+    if (startBtn) startBtn.addEventListener("click", () => fire("/api/agent/run"));
+    if (resumeBtn) resumeBtn.addEventListener("click", () => fire("/api/agent/resume"));
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    bindUpload();
+    bindSplit();
+    bindAgent();
+  });
+  if (document.readyState !== "loading") {
+    bindUpload(); bindSplit(); bindAgent();
+  }
+})();
+
+// === Agent tab: decisions, three-way bench, counterfactuals (consolidated UI) ===
+(function() {
+  function setText(id, txt) { const el = document.getElementById(id); if (el) el.textContent = txt; }
+  async function getJson(url) { const r = await fetch(url); return r.json(); }
+  async function postJson(url, body) {
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+    return r.json();
+  }
+
+  let autoTimer = null;
+
+  async function loadDecisions() {
+    const input = document.getElementById("agentDecisionsRunId");
+    const runId = input ? input.value : "";
+    const url = runId ? "/api/decisions?run_id=" + encodeURIComponent(runId) : "/api/decisions";
+    try {
+      const res = await getJson(url);
+      const lines = (res.rows || []).map(r => {
+        const args = JSON.stringify(r.args || {}).slice(0, 60);
+        return r.ts + "  " + (r.action + "").padEnd(28) + " " + args + "  " + (r.rationale || "");
+      });
+      setText("agentDecisionsLog", lines.length ? lines.join("\n") : "(no decisions yet)");
+    } catch (e) { setText("agentDecisionsLog", "error: " + e); }
+  }
+
+  async function loadThreeWay() {
+    const banner = document.getElementById("threeWayBanner");
+    const table = document.getElementById("threeWayTable");
+    if (!banner || !table) return;
+    while (table.firstChild) table.removeChild(table.firstChild);
+    try {
+      const b = await getJson("/api/benchmark/three-way");
+      banner.style.background = b.engine_integrity === "ok" ? "#e6ffe6" : "#ffe6e6";
+      banner.textContent = "Engine integrity: " + b.engine_integrity + "  |  n=" + (b.n_docs || 0);
+      if (!b.metrics) return;
+      const cols = ["large", "small_cold", "small_reviewed"];
+      const metrics = ["contract_type_accuracy", "clause_family_f1"];
+      const head = document.createElement("tr");
+      const th0 = document.createElement("th"); th0.textContent = "metric";
+      th0.style.border = "1px solid #ccc"; th0.style.padding = "6px 12px"; th0.style.background = "#f4f4f4";
+      head.appendChild(th0);
+      cols.forEach(c => {
+        const th = document.createElement("th"); th.textContent = c;
+        th.style.border = "1px solid #ccc"; th.style.padding = "6px 12px"; th.style.background = "#f4f4f4";
+        head.appendChild(th);
+      });
+      table.appendChild(head);
+      metrics.forEach(m => {
+        const tr = document.createElement("tr");
+        const td0 = document.createElement("td"); td0.textContent = m;
+        td0.style.border = "1px solid #ccc"; td0.style.padding = "6px 12px";
+        tr.appendChild(td0);
+        cols.forEach(c => {
+          const td = document.createElement("td");
+          const v = (b.metrics[m] && b.metrics[m][c]) || 0;
+          td.textContent = (typeof v === "number") ? v.toFixed(2) : String(v);
+          td.style.border = "1px solid #ccc"; td.style.padding = "6px 12px"; td.style.fontFamily = "monospace";
+          tr.appendChild(td);
+        });
+        table.appendChild(tr);
+      });
+    } catch (e) {
+      banner.style.background = "#ffe6e6";
+      banner.textContent = "error: " + e;
+    }
+  }
+
+  async function counterfactual(toggle) {
+    const target = document.getElementById("cfResult");
+    if (!target) return;
+    target.textContent = "Recomputing...";
+    try {
+      const out = await postJson("/api/benchmark/counterfactual", { toggle, model: "qwen3:4b" });
+      target.textContent = JSON.stringify(out, null, 2);
+    } catch (e) { target.textContent = "error: " + e; }
+  }
+
+  function bindAgentTab() {
+    const loadBtn = document.getElementById("agentDecisionsLoadBtn");
+    const autoBtn = document.getElementById("agentDecisionsAutoBtn");
+    const refreshBtn = document.getElementById("threeWayRefreshBtn");
+    const cfVerifier = document.getElementById("cfVerifierBtn");
+    const cfContext = document.getElementById("cfContextBtn");
+    if (loadBtn) loadBtn.addEventListener("click", loadDecisions);
+    if (refreshBtn) refreshBtn.addEventListener("click", loadThreeWay);
+    if (cfVerifier) cfVerifier.addEventListener("click", () => counterfactual("verifier_off"));
+    if (cfContext) cfContext.addEventListener("click", () => counterfactual("context_off"));
+    if (autoBtn) {
+      autoTimer = setInterval(loadDecisions, 2000);
+      autoBtn.addEventListener("click", function() {
+        if (autoTimer) { clearInterval(autoTimer); autoTimer = null; this.textContent = "Auto-refresh: OFF"; }
+        else { autoTimer = setInterval(loadDecisions, 2000); this.textContent = "Auto-refresh: ON"; }
+      });
+    }
+    loadDecisions();
+    loadThreeWay();
+  }
+
+  if (document.readyState !== "loading") bindAgentTab();
+  else document.addEventListener("DOMContentLoaded", bindAgentTab);
+})();

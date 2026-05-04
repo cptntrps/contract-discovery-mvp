@@ -23,6 +23,7 @@
           <button class="nav" data-view="workbench">4. Review</button>
           <button class="nav" data-view="intelligence">5. Intelligence</button>
           <button class="nav" data-view="overview">6. Benchmark</button>
+          <button class="nav" data-view="agent">7. Agent</button>
         </nav>
       </aside>
 
@@ -96,6 +97,51 @@
               </aside>
             </div>
           </section>
+          <section class="panel">
+            <h3>2. Add your contracts</h3>
+            <p>Drag a folder of contracts onto the dropzone, or click <em>Choose folder</em>. Accepted: .txt .md .html .htm .docx .pdf</p>
+            <div id="uploadDropzone" style="border: 2px dashed #ccc; border-radius: 8px; padding: 40px; text-align: center; background: #fafafa; cursor: pointer; margin: 12px 0;">
+              <p style="margin: 0 0 12px; font-size: 16px; color: #666;">Drop a folder of contracts here</p>
+              <p style="margin: 0; font-size: 13px; color: #888;">or</p>
+              <p style="margin: 12px 0 0;">
+                <label style="cursor: pointer; padding: 8px 16px; background: #4a7; color: white; border-radius: 4px; display: inline-block;">
+                  Choose folder
+                  <input id="uploadFolderInput" type="file" multiple webkitdirectory directory style="display: none;" />
+                </label>
+                <label style="cursor: pointer; padding: 8px 16px; background: #aaa; color: white; border-radius: 4px; display: inline-block; margin-left: 8px;">
+                  Choose files
+                  <input id="uploadFilesInput" type="file" multiple style="display: none;" />
+                </label>
+              </p>
+            </div>
+            <div id="uploadStatus" style="font-family: monospace; font-size: 13px; min-height: 20px; padding: 8px;"></div>
+            <div id="uploadResults" style="margin-top: 8px;"></div>
+          </section>
+
+          <section class="panel">
+            <h3>3. Split into review and held-out</h3>
+            <p>Partition the corpus deterministically. Review-frac = fraction of docs the SME reviews; the rest become a held-out test the agent never trains on.</p>
+            <p>
+              <label>Review fraction <input id="splitFrac" type="number" step="0.05" min="0.1" max="0.95" value="0.6" style="width: 70px;" /></label>
+              <label style="margin-left: 12px;">Seed <input id="splitSeed" type="number" value="42" style="width: 70px;" /></label>
+              <button id="splitBtn" type="button" style="margin-left: 12px; padding: 6px 14px;">Split corpus</button>
+            </p>
+            <div id="splitStatus" style="font-family: monospace; font-size: 13px; padding: 8px;"></div>
+          </section>
+
+          <section class="panel">
+            <h3>4. Start the agent</h3>
+            <p>Runs primary + shadow extraction with the verifier on the review set, builds the triage queue, then waits for human review.</p>
+            <p>
+              <label>Primary model <input id="agentPrimary" value="qwen2.5:14b" style="width: 140px;" /></label>
+              <label style="margin-left: 12px;">Shadow model <input id="agentShadow" value="qwen3:4b" style="width: 140px;" /></label>
+              <button id="agentStartBtn" type="button" style="margin-left: 12px; padding: 6px 14px; background: #2a6; color: white; border: none; border-radius: 4px;">Start agent run</button>
+              <button id="agentResumeBtn" type="button" style="margin-left: 8px; padding: 6px 14px;">Resume after review</button>
+            </p>
+            <div id="agentStatus" style="font-family: monospace; font-size: 13px; padding: 8px;"></div>
+            <p style="margin-top: 8px;"><a href="/agent" target="_blank">Open the live decision log →</a></p>
+          </section>
+
           <section class="panel roadmapDoc">
             <h3>Executable User Stories</h3>
             <div id="interviewStories" class="denseTable"></div>
@@ -329,12 +375,40 @@
         </section>
 
         <section id="agent" class="view">
-          <div class="toolbar">
-            <button class="action" data-action="agent-analyze">Run Agent Analysis</button>
-            <button class="action" data-action="review-packet">Rebuild Review Packet</button>
-          </div>
           <section class="panel">
-            <h3>Agentic Review Findings</h3>
+            <h3>Agent decisions (live)</h3>
+            <p>Every planner action in this run is logged here. Auto-refreshes every 2s.</p>
+            <p>
+              <input id="agentDecisionsRunId" placeholder="run_id (or leave blank for all)" style="width: 360px;" />
+              <button id="agentDecisionsLoadBtn" type="button">Load</button>
+              <button id="agentDecisionsAutoBtn" type="button">Auto-refresh: ON</button>
+            </p>
+            <pre id="agentDecisionsLog" style="max-height: 50vh; overflow: auto; font-size: 11px; background: #fafafa; border: 1px solid #eee; padding: 12px;">(no decisions yet)</pre>
+          </section>
+
+          <section class="panel">
+            <h3>Three-way benchmark</h3>
+            <div id="threeWayBanner" style="padding: 8px 12px; background: #f4f4f4; border-radius: 4px; font-family: monospace;">(load benchmark)</div>
+            <table id="threeWayTable" style="margin-top: 8px; border-collapse: collapse;"></table>
+            <p style="margin-top: 8px;"><button id="threeWayRefreshBtn" type="button">Refresh</button></p>
+          </section>
+
+          <section class="panel">
+            <h3>Counterfactual toggles</h3>
+            <p>Recompute the small_reviewed F1 with a key component disabled. Shows what each component is worth.</p>
+            <p>
+              <button id="cfVerifierBtn" type="button">Verifier OFF</button>
+              <button id="cfContextBtn" type="button" style="margin-left: 8px;">Reviewed-context OFF</button>
+            </p>
+            <pre id="cfResult" style="font-size: 12px; background: #fafafa; border: 1px solid #eee; padding: 12px;">(click a counterfactual to recompute)</pre>
+          </section>
+
+          <section class="panel">
+            <h3>Legacy agent analysis</h3>
+            <div class="toolbar">
+              <button class="action" data-action="agent-analyze">Run Agent Analysis</button>
+              <button class="action" data-action="review-packet">Rebuild Review Packet</button>
+            </div>
             <div id="agentFindings" class="rows"></div>
           </section>
         </section>
