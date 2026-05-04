@@ -54,7 +54,7 @@ def embed_corpus(root: Path, *, model: str = "nomic-embed-text",
             doc = json.loads(line); doc_id = doc["doc_id"]
             if doc_id in existing and existing[doc_id].get("model") == model:
                 skipped += 1; continue
-            vec = _call_ollama_embed((doc.get("text") or "")[:max_chars])
+            vec = _call_ollama_embed((doc.get("text") or "")[:max_chars], model=model)
             if vec is None: failed += 1; continue
             f.write(json.dumps({"doc_id": doc_id, "model": model, "embedding": vec}) + "\n")
             embedded += 1

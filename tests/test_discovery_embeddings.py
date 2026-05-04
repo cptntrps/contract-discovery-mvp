@@ -7,7 +7,7 @@ from contract_intel_mvp.discovery.embeddings import (
 
 def test_embed_corpus_writes_jsonl(tmp_root, discovery_corpus, monkeypatch):
     import contract_intel_mvp.discovery.embeddings as e
-    monkeypatch.setattr(e, "_call_ollama_embed", lambda text: [float(len(text) % 7), 0.1, 0.2, 0.3])
+    monkeypatch.setattr(e, "_call_ollama_embed", lambda text, **_: [float(len(text) % 7), 0.1, 0.2, 0.3])
     out = embed_corpus(tmp_root, model="nomic-embed-text")
     assert out["embedded"] == 20
     rows = [json.loads(l) for l in (tmp_root / "data" / "discovery" / "embeddings.jsonl").read_text().splitlines()]
@@ -18,7 +18,7 @@ def test_embed_corpus_writes_jsonl(tmp_root, discovery_corpus, monkeypatch):
 def test_embed_corpus_skips_existing(tmp_root, discovery_corpus, monkeypatch):
     import contract_intel_mvp.discovery.embeddings as e
     calls = []
-    monkeypatch.setattr(e, "_call_ollama_embed", lambda t: calls.append(t) or [0.0]*4)
+    monkeypatch.setattr(e, "_call_ollama_embed", lambda t, **_: calls.append(t) or [0.0]*4)
     embed_corpus(tmp_root, model="nomic-embed-text")
     n = len(calls)
     embed_corpus(tmp_root, model="nomic-embed-text")
@@ -27,7 +27,7 @@ def test_embed_corpus_skips_existing(tmp_root, discovery_corpus, monkeypatch):
 
 def test_load_embeddings_returns_store(tmp_root, discovery_corpus, monkeypatch):
     import contract_intel_mvp.discovery.embeddings as e
-    monkeypatch.setattr(e, "_call_ollama_embed", lambda t: [1.0, 0.0, 0.0, 0.0])
+    monkeypatch.setattr(e, "_call_ollama_embed", lambda t, **_: [1.0, 0.0, 0.0, 0.0])
     embed_corpus(tmp_root, model="nomic-embed-text")
     store = load_embeddings(tmp_root)
     assert isinstance(store, EmbeddingsStore)
