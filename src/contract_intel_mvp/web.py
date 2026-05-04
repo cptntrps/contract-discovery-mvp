@@ -35,6 +35,73 @@ from .benchmark.counterfactual import (
 STATIC_DIR = Path(__file__).parent / "static"
 
 
+_AFFIRM = {"yes", "y", "yep", "yeah", "ok", "okay", "sure", "sounds right",
+           "sounds good", "looks good", "looks fine", "those look fine",
+           "approve", "approved", "correct", "that's right", "thats right",
+           "go ahead", "good", "fine"}
+
+
+def _is_affirmative(message: str) -> bool:
+    m = (message or "").strip().lower().rstrip(".!,")
+    if m in _AFFIRM:
+        return True
+    return any(a in m for a in ("yes", "looks right", "sounds right", "looks fine",
+                                 "looks good", "sounds good", "that works", "approve"))
+
+
+def _detect_discovery_stage(sig: dict, message: str) -> dict:
+    """Server-side stage detection. Tells the agent exactly what to do next."""
+    tc = (sig or {}).get("target_class", "")
+    td = (sig or {}).get("target_description", "")
+    cts = (sig or {}).get("clause_types") or []
+    must = [ct for ct in cts if ct.get("is_must_have")]
+    not_must = [ct for ct in cts if not ct.get("is_must_have")]
+    affirm = _is_affirmative(message)
+
+    if not tc:
+        return {"stage": 1, "instruction":
+                "STAGE 1: Save the user's reply as target_class and "
+                "advance immediately to STAGE 2 (propose BU and region with bullets)."}
+    if not td:
+        return {"stage": 2, "instruction":
+                "STAGE 2: Save the user's reply (expanded if abbreviated) into "
+                "target_description as '<Division> / <Region>', then propose the "
+                "definition (STAGE 3) in the same response."}
+    if not cts:
+        return {"stage": 3, "instruction":
+                "STAGE 3: Propose a one-sentence plain-English definition of the "
+                "target contract type and ask 'Does that sound right?'. "
+                "DO NOT propose clauses yet. DO NOT ask for clause examples. "
+                "Wait for the user's yes/no on the definition."}
+    if cts and not must:
+        # only must-not-have items present (rare); still need must-haves
+        return {"stage": 4, "instruction":
+                "STAGE 4: Propose 3-5 typical must-have clauses now."}
+    if must and not not_must:
+        if affirm:
+            return {"stage": 5, "instruction":
+                    "STAGE 5: User confirmed the must-have clauses. Now propose "
+                    "typical disqualifying competing types (must-not-have) as "
+                    "bullets. Add the user's confirmed exclusions as clause_types "
+                    "with is_must_have=false."}
+        return {"stage": 4, "instruction":
+                "STAGE 4: Must-have clauses already proposed. If user is "
+                "approving, advance to STAGE 5 (exclusions). If user is "
+                "editing, refine clause_types accordingly."}
+    if must and not_must:
+        if affirm:
+            return {"stage": 7, "instruction":
+                    "STAGE 7: User confirmed the recap. Set ready_to_save=true and "
+                    "tell them: 'Great — click Save on the right, then run Step 3 "
+                    "to start finding matches.'"}
+        return {"stage": 6, "instruction":
+                "STAGE 6: Recap in plain English: 'OK — we're looking for "
+                "<Target> contracts that include <must-have summary>, and "
+                "skipping any whose main purpose is <must-not-have summary>. "
+                "Does that match?' Wait for yes/no."}
+    return {"stage": 0, "instruction": "Continue the conversation naturally."}
+
+
 DISCOVERY_OPENING_TEXT = (
     "Hi — I'm here to help you find a specific kind of contract in a big folder. "
     "I'll ask you a few questions, build up a description of what you're looking "
@@ -219,8 +286,11 @@ def build_app(root: Path):
                     "engine": "local_save"}
 
         if _openai_interview_enabled():
+            stage = _detect_discovery_stage(sig_in, message)
             prompt = {
-                "task": "Continue a discovery interview. Refine the structured signature.",
+                "task": "Continue a discovery interview. Follow the SERVER_STAGE_INSTRUCTION exactly.",
+                "SERVER_STAGE": stage["stage"],
+                "SERVER_STAGE_INSTRUCTION": stage["instruction"],
                 "current_signature": sig_in,
                 "user_message": message,
                 "schema": {
@@ -271,7 +341,7 @@ def build_app(root: Path):
                 pass
 
         return {"signature": sig_in,
-                "assistant": "Tell me one specific clause type that this contract type always contains, and give me a one-sentence example of how it usually reads.",
+                "assistant": "Sorry — I lost my train of thought for a second. Could you try that again, or tell me what you'd like me to do next?",
                 "engine": "local_discovery_fallback"}
 
     from .discovery.embeddings import embed_corpus
@@ -402,8 +472,11 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
                     "engine": "local_save"}
 
         if _openai_interview_enabled():
+            stage = _detect_discovery_stage(sig_in, message)
             prompt = {
-                "task": "Continue a discovery interview. Refine the structured signature.",
+                "task": "Continue a discovery interview. Follow the SERVER_STAGE_INSTRUCTION exactly.",
+                "SERVER_STAGE": stage["stage"],
+                "SERVER_STAGE_INSTRUCTION": stage["instruction"],
                 "current_signature": sig_in,
                 "user_message": message,
                 "schema": {
@@ -454,7 +527,7 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
                 pass
 
         return {"signature": sig_in,
-                "assistant": "Tell me one specific clause type that this contract type always contains, and give me a one-sentence example of how it usually reads.",
+                "assistant": "Sorry — I lost my train of thought for a second. Could you try that again, or tell me what you'd like me to do next?",
                 "engine": "local_discovery_fallback"}
 
     class Handler(BaseHTTPRequestHandler):
