@@ -2063,3 +2063,219 @@ function escape(value) {
   if (document.readyState !== "loading") bindAgentTab();
   else document.addEventListener("DOMContentLoaded", bindAgentTab);
 })();
+
+// === Discovery tab (cut-down with clause library viewer) ===
+(function() {
+  function $id(id) { return document.getElementById(id); }
+  function setText(id, t) { const el = $id(id); if (el) el.textContent = t; }
+  async function gj(url) { return (await fetch(url)).json(); }
+  async function pj(url, body) {
+    const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"},
+                                body: JSON.stringify(body || {})});
+    return r.json();
+  }
+  function readB64(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve({filename: file.webkitRelativePath || file.name,
+                                content_b64: String(r.result).split(",")[1] || ""});
+      r.onerror = () => reject(r.error);
+      r.readAsDataURL(file);
+    });
+  }
+
+  let chatLog = [];
+  let currentSig = {target_class: "", target_description: "", clause_types: []};
+  let queueState = {round_index: 0, items: []};
+  let openingShown = false;
+
+  function renderChat() {
+    const el = $id("discChat"); if (!el) return;
+    while (el.firstChild) el.removeChild(el.firstChild);
+    chatLog.forEach(m => {
+      const div = document.createElement("div");
+      div.style.margin = "4px 0"; div.style.padding = "8px 12px"; div.style.borderRadius = "6px";
+      div.style.background = m.role === "user" ? "#eef" : "#f4faf4";
+      div.style.whiteSpace = "pre-wrap";
+      div.textContent = (m.role === "user" ? "You: " : "Agent: ") + m.content;
+      el.appendChild(div);
+    });
+    el.scrollTop = el.scrollHeight;
+  }
+  function renderSig() { setText("discSignaturePreview", JSON.stringify(currentSig, null, 2)); }
+
+  async function showOpening() {
+    if (openingShown) return;
+    const r = await pj("/api/interview/discovery-chat",
+                       {signature: currentSig, message: "", initial: true});
+    chatLog.push({role: "agent", content: r.assistant || ""});
+    renderChat(); openingShown = true;
+  }
+
+  async function chatSend() {
+    const input = $id("discChatInput"); const msg = (input.value || "").trim();
+    if (!msg) return;
+    chatLog.push({role: "user", content: msg}); renderChat(); input.value = "";
+    const r = await pj("/api/interview/discovery-chat",
+                       {signature: currentSig, message: msg});
+    if (r.signature) { currentSig = r.signature; renderSig(); }
+    chatLog.push({role: "agent", content: r.assistant || "(no reply)"});
+    renderChat();
+  }
+
+  async function saveSig() {
+    const r = await pj("/api/interview/discovery-chat",
+                       {signature: currentSig, message: "save", save: true});
+    chatLog.push({role: "agent", content: r.assistant || "saved"}); renderChat();
+    pollState(); pollLibrary();
+  }
+
+  async function uploadAndIngest(fileList) {
+    const accepted = /\.(txt|md|html?|docx|pdf)$/i;
+    const files = Array.from(fileList || []).filter(f => accepted.test(f.name));
+    if (!files.length) { setText("discUploadStatus", "no accepted files"); return; }
+    setText("discUploadStatus", `Reading ${files.length}...`);
+    const payload = [];
+    for (const f of files) try { payload.push(await readB64(f)); } catch (e) { /* skip */ }
+    const up = await pj("/api/upload", {files: payload});
+    setText("discUploadStatus", `Uploaded ${up.received}, ingested ${up.ingested}.`);
+  }
+  async function embed() {
+    setText("discEmbedStatus", "embedding (slow)...");
+    const r = await pj("/api/discovery/embed", {model: "nomic-embed-text"});
+    setText("discEmbedStatus", `Embedded ${r.embedded}, skipped ${r.skipped}, failed ${r.failed}.`);
+    pollState();
+  }
+
+  async function runRound() {
+    const idx = parseInt($id("discRoundIdx").value || "0", 10);
+    const topK = parseInt($id("discTopK").value || "200", 10);
+    const batch = parseInt($id("discBatch").value || "20", 10);
+    setText("discRoundResult", "running... (calls the LLM once per top-K candidate)");
+    const r = await pj("/api/discovery/run-round",
+                       {round_index: idx, top_k: topK, batch_size: batch,
+                        classifier_model: "qwen3:4b"});
+    setText("discRoundResult", JSON.stringify(r, null, 2));
+    await loadReviewQueue(idx);
+    pollState(); pollLibrary();
+  }
+
+  async function loadReviewQueue(idx) {
+    const url = "/api/file?path=" + encodeURIComponent(`data/discovery/review_queue_round_${idx}.json`);
+    try {
+      const txt = await (await fetch(url)).text();
+      queueState = JSON.parse(txt);
+    } catch (e) { queueState = {round_index: idx, items: []}; }
+    const root = $id("discReviewQueue");
+    while (root.firstChild) root.removeChild(root.firstChild);
+    queueState.items.forEach(it => {
+      const card = document.createElement("div");
+      card.style.border = "1px solid #ccc"; card.style.borderRadius = "4px";
+      card.style.padding = "10px"; card.style.margin = "8px 0"; card.style.background = "white";
+      const head = document.createElement("div"); head.style.fontWeight = "bold";
+      head.textContent = `${it.doc_id}  —  agent: ${it.verdict} (${(it.confidence||0).toFixed(2)})  —  reason: ${it.reason}`;
+      card.appendChild(head);
+      const ev = it.evidence_per_clause_type || {};
+      Object.keys(ev).forEach(k => {
+        const row = document.createElement("div");
+        row.style.fontSize = "11px"; row.style.color = "#555"; row.style.marginTop = "4px";
+        row.style.paddingLeft = "12px"; row.style.borderLeft = "2px solid #ddd";
+        row.textContent = `[${k}]  ${(ev[k] || "(none)").slice(0, 240)}`;
+        card.appendChild(row);
+      });
+      const btns = document.createElement("div"); btns.style.marginTop = "8px";
+      ["yes","no","borderline"].forEach(v => {
+        const b = document.createElement("button");
+        b.textContent = v; b.style.marginRight = "6px";
+        b.addEventListener("click", () => {
+          it.userVerdict = v;
+          [...btns.children].forEach(x => x.style.background = "");
+          b.style.background = v === "yes" ? "#cfc" : v === "no" ? "#fcc" : "#ffc";
+        });
+        btns.appendChild(b);
+      });
+      card.appendChild(btns);
+      root.appendChild(card);
+    });
+  }
+
+  async function submitLabels() {
+    const labels = queueState.items.filter(it => it.userVerdict).map(it => ({
+      doc_id: it.doc_id, verdict: it.userVerdict,
+    }));
+    if (!labels.length) { alert("no labels selected"); return; }
+    const r = await pj("/api/discovery/submit-labels",
+                       {round_index: queueState.round_index, labels});
+    alert(`Submitted ${r.labels_received}. Corrections: ${r.corrections}. Library grew by ${r.library_growth} variations.`);
+    pollState(); pollLibrary();
+  }
+
+  async function finalize() {
+    const idx = parseInt($id("discRoundIdx").value || "0", 10);
+    const r = await pj("/api/discovery/finalize",
+                       {round_index: idx, borderline_threshold: 0.7});
+    setText("discFinalResult", JSON.stringify(r, null, 2));
+    pollState();
+  }
+
+  async function pollState() {
+    try { setText("discStateJson", JSON.stringify(await gj("/api/discovery/state"), null, 2)); }
+    catch (e) { setText("discStateJson", "error: " + e); }
+  }
+
+  async function pollLibrary() {
+    const root = $id("discLibrary"); if (!root) return;
+    while (root.firstChild) root.removeChild(root.firstChild);
+    let lib;
+    try { lib = await gj("/api/discovery/library"); }
+    catch (e) { return; }
+    if (!lib.clause_types || !lib.clause_types.length) {
+      const p = document.createElement("p"); p.textContent = "(library not yet seeded)";
+      root.appendChild(p); return;
+    }
+    const h = document.createElement("h4"); h.textContent = `Target class: ${lib.target_class}`;
+    root.appendChild(h);
+    lib.clause_types.forEach(ct => {
+      const div = document.createElement("div");
+      div.style.border = "1px solid #ddd"; div.style.borderRadius = "4px";
+      div.style.padding = "10px"; div.style.margin = "8px 0";
+      div.style.background = ct.is_must_have ? "#f4faf4" : "#faf4f4";
+      const head = document.createElement("div"); head.style.fontWeight = "bold";
+      const flag = ct.is_must_have ? "[MUST HAVE]" : "[MUST NOT HAVE]";
+      head.textContent = `${flag} ${ct.type}  (${ct.variations.length} variations)`;
+      div.appendChild(head);
+      const desc = document.createElement("div"); desc.style.fontSize = "11px"; desc.style.color = "#666";
+      desc.textContent = ct.description; div.appendChild(desc);
+      ct.variations.forEach(v => {
+        const item = document.createElement("div");
+        item.style.fontSize = "11px"; item.style.marginTop = "6px"; item.style.paddingLeft = "12px";
+        item.style.borderLeft = "2px solid #ccc";
+        item.textContent = `• "${v.text}"   — from ${v.source_doc_id} (${v.confirmed_by})`;
+        div.appendChild(item);
+      });
+      root.appendChild(div);
+    });
+  }
+
+  function bind() {
+    const fi = $id("discFolderInput");
+    if (fi) fi.addEventListener("change", e => uploadAndIngest(e.target.files));
+    const dz = $id("discDropzone");
+    if (dz) {
+      ["dragover","dragenter"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.style.background = "#eef9ee"; }));
+      ["dragleave","drop"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.style.background = "#fafafa"; }));
+      dz.addEventListener("drop", e => { e.preventDefault(); uploadAndIngest(e.dataTransfer.files); });
+    }
+    const eb = $id("discEmbedBtn"); if (eb) eb.addEventListener("click", embed);
+    const cs = $id("discChatSend"); if (cs) cs.addEventListener("click", chatSend);
+    const ci = $id("discChatInput"); if (ci) ci.addEventListener("keydown", e => { if (e.key === "Enter") chatSend(); });
+    const ss = $id("discSaveSig"); if (ss) ss.addEventListener("click", saveSig);
+    const rr = $id("discRunRoundBtn"); if (rr) rr.addEventListener("click", runRound);
+    const sl = $id("discSubmitLabels"); if (sl) sl.addEventListener("click", submitLabels);
+    const fb = $id("discFinalizeBtn"); if (fb) fb.addEventListener("click", finalize);
+    showOpening(); pollState(); pollLibrary();
+    setInterval(pollState, 5000); setInterval(pollLibrary, 8000);
+  }
+  if (document.readyState !== "loading") bind();
+  else document.addEventListener("DOMContentLoaded", bind);
+})();
