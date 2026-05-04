@@ -321,12 +321,17 @@ def build_app(root: Path):
         message = str(payload.get("message", "")).strip()
         save = bool(payload.get("save"))
         initial = bool(payload.get("initial"))
+        removed_types = set(payload.get("removed_clause_types") or [])
 
         if initial:
             return {"signature": sig_in, "assistant": DISCOVERY_OPENING,
                     "engine": "scripted_opening"}
 
         if save and sig_in.get("target_class") and sig_in.get("target_description"):
+            # Honour user deletions on save too.
+            if removed_types and isinstance(sig_in.get("clause_types"), list):
+                sig_in["clause_types"] = [ct for ct in sig_in["clause_types"]
+                                           if ct.get("type") not in removed_types]
             init_signature(root, interview=sig_in)
             init_library_from_signature(root)
             return {"signature": sig_in, "saved": True,
@@ -335,10 +340,18 @@ def build_app(root: Path):
 
         if _openai_interview_enabled():
             stage = _detect_discovery_stage(sig_in, message)
+            removed_instruction = ""
+            if removed_types:
+                removed_instruction = (
+                    f" The user has explicitly removed these clause types and "
+                    f"DOES NOT want them re-added: {sorted(removed_types)}. "
+                    f"Do not propose any clause_type with these names."
+                )
             prompt = {
                 "task": "Continue a discovery interview. Follow the SERVER_STAGE_INSTRUCTION exactly.",
                 "SERVER_STAGE": stage["stage"],
-                "SERVER_STAGE_INSTRUCTION": stage["instruction"],
+                "SERVER_STAGE_INSTRUCTION": stage["instruction"] + removed_instruction,
+                "USER_REMOVED_CLAUSE_TYPES": sorted(removed_types) if removed_types else [],
                 "current_signature": sig_in,
                 "user_message": message,
                 "schema": {
@@ -387,6 +400,10 @@ def build_app(root: Path):
                         merged["target_class"] = _heuristic_target_class(message)
                     if stage["stage"] == 2 and not (merged.get("target_description") or "").strip():
                         merged["target_description"] = message.strip() or merged.get("target_class", "")
+                    # Honor user deletions even if the model ignored the instruction.
+                    if removed_types and isinstance(merged.get("clause_types"), list):
+                        merged["clause_types"] = [ct for ct in merged["clause_types"]
+                                                   if ct.get("type") not in removed_types]
                     return {"signature": merged,
                             "assistant": str(parsed.get("assistant") or ""),
                             "ready_to_save": bool(parsed.get("ready_to_save")),
@@ -524,6 +541,7 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
         message = str(payload.get("message", "")).strip()
         save = bool(payload.get("save"))
         initial = bool(payload.get("initial"))
+        removed_types = set(payload.get("removed_clause_types") or [])
 
         DISCOVERY_OPENING = DISCOVERY_OPENING_TEXT
         # Use the module-level DISCOVERY_SYSTEM_PROMPT defined at top of file.
@@ -533,6 +551,9 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
                     "engine": "scripted_opening"}
 
         if save and sig_in.get("target_class") and sig_in.get("target_description"):
+            if removed_types and isinstance(sig_in.get("clause_types"), list):
+                sig_in["clause_types"] = [ct for ct in sig_in["clause_types"]
+                                           if ct.get("type") not in removed_types]
             init_signature(root, interview=sig_in)
             init_library_from_signature(root)
             return {"signature": sig_in, "saved": True,
@@ -541,10 +562,18 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
 
         if _openai_interview_enabled():
             stage = _detect_discovery_stage(sig_in, message)
+            removed_instruction = ""
+            if removed_types:
+                removed_instruction = (
+                    f" The user has explicitly removed these clause types and "
+                    f"DOES NOT want them re-added: {sorted(removed_types)}. "
+                    f"Do not propose any clause_type with these names."
+                )
             prompt = {
                 "task": "Continue a discovery interview. Follow the SERVER_STAGE_INSTRUCTION exactly.",
                 "SERVER_STAGE": stage["stage"],
-                "SERVER_STAGE_INSTRUCTION": stage["instruction"],
+                "SERVER_STAGE_INSTRUCTION": stage["instruction"] + removed_instruction,
+                "USER_REMOVED_CLAUSE_TYPES": sorted(removed_types) if removed_types else [],
                 "current_signature": sig_in,
                 "user_message": message,
                 "schema": {
@@ -593,6 +622,10 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
                         merged["target_class"] = _heuristic_target_class(message)
                     if stage["stage"] == 2 and not (merged.get("target_description") or "").strip():
                         merged["target_description"] = message.strip() or merged.get("target_class", "")
+                    # Honor user deletions even if the model ignored the instruction.
+                    if removed_types and isinstance(merged.get("clause_types"), list):
+                        merged["clause_types"] = [ct for ct in merged["clause_types"]
+                                                   if ct.get("type") not in removed_types]
                     return {"signature": merged,
                             "assistant": str(parsed.get("assistant") or ""),
                             "ready_to_save": bool(parsed.get("ready_to_save")),

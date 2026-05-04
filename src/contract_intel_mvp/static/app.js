@@ -2097,6 +2097,9 @@ function escape(value) {
   let chatLog = [];
   let currentSig = {target_class: "", target_description: "", clause_types: []};
   let queueState = {round_index: 0, items: []};
+  // Names the user has explicitly deleted from the sidebar. We refuse to let
+  // the agent silently re-add them on subsequent turns.
+  let userDeletedClauseTypes = new Set();
   let openingShown = false;
 
   function renderChat() {
@@ -2224,7 +2227,8 @@ function escape(value) {
     delBtn.style.cursor = "pointer"; delBtn.style.color = "#a31";
     delBtn.addEventListener("click", () => {
       syncSigFromDOM();
-      currentSig.clause_types.splice(idx, 1);
+      const removed = currentSig.clause_types.splice(idx, 1)[0];
+      if (removed && removed.type) userDeletedClauseTypes.add(removed.type);
       renderSig();
     });
     top.appendChild(delBtn);
@@ -2278,22 +2282,40 @@ function escape(value) {
     renderChat(); openingShown = true;
   }
 
+  function applyDeletionFilter(sig) {
+    // Strip any clause_types whose name is in the user-deleted set.
+    if (!sig || !Array.isArray(sig.clause_types) || !userDeletedClauseTypes.size) return sig;
+    sig.clause_types = sig.clause_types.filter(ct => !userDeletedClauseTypes.has(ct.type));
+    return sig;
+  }
+
   async function chatSend() {
     const input = $id("discChatInput"); const msg = (input.value || "").trim();
     if (!msg) return;
     syncSigFromDOM();   // capture user edits before sending
     chatLog.push({role: "user", content: msg}); renderChat(); input.value = "";
-    const r = await pj("/api/interview/discovery-chat",
-                       {signature: currentSig, message: msg});
-    if (r.signature) { currentSig = r.signature; renderSig(); }
+    const r = await pj("/api/interview/discovery-chat", {
+      signature: currentSig,
+      message: msg,
+      removed_clause_types: Array.from(userDeletedClauseTypes),
+    });
+    if (r.signature) {
+      currentSig = applyDeletionFilter(r.signature);
+      renderSig();
+    }
     chatLog.push({role: "agent", content: r.assistant || "(no reply)"});
     renderChat();
   }
 
   async function saveSig() {
     syncSigFromDOM();   // capture user edits before saving
-    const r = await pj("/api/interview/discovery-chat",
-                       {signature: currentSig, message: "save", save: true});
+    applyDeletionFilter(currentSig);
+    const r = await pj("/api/interview/discovery-chat", {
+      signature: currentSig,
+      message: "save",
+      save: true,
+      removed_clause_types: Array.from(userDeletedClauseTypes),
+    });
     chatLog.push({role: "agent", content: r.assistant || "saved"}); renderChat();
     pollState(); pollLibrary();
   }
