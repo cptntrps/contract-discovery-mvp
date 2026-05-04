@@ -12,27 +12,30 @@
         <div class="brand">
           <div class="mark">CI</div>
           <div>
-            <h1>Contract Intelligence</h1>
-            <p>Reviewed-context learning demo</p>
+            <h1>Contract Discovery</h1>
+            <p>Find contracts of one type in a haystack</p>
           </div>
         </div>
         <nav>
-          <button class="nav active" data-view="interview">1. Setup</button>
-          <button class="nav" data-view="corpus">2. Corpus</button>
-          <button class="nav" data-view="queue">3. Hypotheses</button>
-          <button class="nav" data-view="workbench">4. Review</button>
-          <button class="nav" data-view="intelligence">5. Intelligence</button>
-          <button class="nav" data-view="overview">6. Benchmark</button>
-          <button class="nav" data-view="agent">7. Agent</button>
-          <button class="nav" data-view="discovery">Discovery</button>
+          <button class="nav active" data-view="discovery">Discovery</button>
+          <details style="margin-top: 16px; font-size: 11px; color: #888;">
+            <summary style="cursor: pointer;">Legacy panels (extraction MVP)</summary>
+            <button class="nav" data-view="interview" style="margin-top: 4px;">Setup chat</button>
+            <button class="nav" data-view="corpus">Corpus</button>
+            <button class="nav" data-view="queue">Hypotheses</button>
+            <button class="nav" data-view="workbench">Review</button>
+            <button class="nav" data-view="intelligence">Intelligence</button>
+            <button class="nav" data-view="overview">Benchmark</button>
+            <button class="nav" data-view="agent">Agent</button>
+          </details>
         </nav>
       </aside>
 
       <main>
         <header class="topbar">
           <div>
-            <h2 id="viewTitle">Setup</h2>
-            <p id="viewSub">Start with the SME interview and scope the contract intelligence run.</p>
+            <h2 id="viewTitle">Discovery</h2>
+            <p id="viewSub">Drop a folder, define what you're looking for, and let the agent find it.</p>
             <p id="globalStatus" class="statusLine"></p>
           </div>
           <button id="refreshBtn" class="iconButton" title="Refresh data">↻</button>
@@ -68,7 +71,7 @@
           </div>
         </section>
 
-        <section id="interview" class="view active">
+        <section id="interview" class="view">
           <section class="panel">
             <div class="coverHeader">
               <div>
@@ -491,7 +494,7 @@
             <div id="roadmapMarkdown" class="reportMarkdown"></div>
           </section>
         </section>
-        <section id="discovery" class="view">
+        <section id="discovery" class="view active">
           <section class="panel">
             <h3>1. Drop your contracts</h3>
             <div id="discDropzone" style="border: 2px dashed #ccc; padding: 30px; text-align: center; background: #fafafa; border-radius: 8px;">
