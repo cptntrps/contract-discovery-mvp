@@ -168,11 +168,211 @@ def build_app(root: Path):
                 "assistant": "Tell me one specific clause type that this contract type always contains, and give me a one-sentence example of how it usually reads.",
                 "engine": "local_discovery_fallback"}
 
+    from .discovery.embeddings import embed_corpus
+    from .discovery.loop import run_round, submit_labels, finalize
+    from .discovery.convergence import should_stop
+    from .discovery.library import load_library
+
+    @app.get("/api/discovery/state")
+    def discovery_state():
+        sig_path = root / "data" / "discovery" / "signature.json"
+        emb_path = root / "data" / "discovery" / "embeddings.jsonl"
+        rounds_path = root / "data" / "discovery" / "rounds.json"
+        final_path = root / "data" / "discovery" / "final.json"
+        target_class = None
+        library_size = 0
+        if sig_path.exists():
+            target_class = load_signature(root).target_class
+            try:
+                lib = load_library(root)
+                library_size = len(lib["clause_types"]) + sum(
+                    len(ct["variations"]) for ct in lib["clause_types"])
+            except Exception:
+                library_size = 0
+        return {
+            "target_class": target_class,
+            "embedded_count": sum(1 for l in emb_path.read_text().splitlines() if l.strip())
+                              if emb_path.exists() else 0,
+            "rounds": json.loads(rounds_path.read_text()).get("rounds", [])
+                      if rounds_path.exists() else [],
+            "finalized": final_path.exists(),
+            "should_stop": should_stop(root),
+            "library_size": library_size,
+        }
+
+    @app.get("/api/discovery/library")
+    def discovery_library():
+        try:
+            return load_library(root)
+        except ValueError:
+            return {"target_class": None, "clause_types": []}
+
+    @app.post("/api/discovery/embed")
+    def discovery_embed(payload: dict):
+        return embed_corpus(root, model=payload.get("model", "nomic-embed-text"))
+
+    @app.post("/api/discovery/run-round")
+    def discovery_run_round(payload: dict):
+        return run_round(root,
+                         classifier_model=payload.get("classifier_model", "qwen3:4b"),
+                         top_k=int(payload.get("top_k", 200)),
+                         batch_size=int(payload.get("batch_size", 20)),
+                         round_index=int(payload.get("round_index", 0)),
+                         seed=int(payload.get("seed", 0)))
+
+    @app.post("/api/discovery/submit-labels")
+    def discovery_submit_labels(payload: dict):
+        return submit_labels(root,
+                             round_index=int(payload.get("round_index", 0)),
+                             labels=payload.get("labels", []))
+
+    @app.post("/api/discovery/finalize")
+    def discovery_finalize(payload: dict):
+        return finalize(root, round_index=int(payload.get("round_index", 0)),
+                        borderline_threshold=float(payload.get("borderline_threshold", 0.7)))
+
     return app
 
 
 def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None:
     root = root.resolve()
+
+    from .discovery.signature import init_signature, load_signature
+    from .discovery.library import init_library_from_signature, load_library
+    from .discovery.embeddings import embed_corpus
+    from .discovery.loop import run_round, submit_labels, finalize
+    from .discovery.convergence import should_stop
+
+    def _discovery_state() -> dict[str, object]:
+        sig_path = root / "data" / "discovery" / "signature.json"
+        emb_path = root / "data" / "discovery" / "embeddings.jsonl"
+        rounds_path = root / "data" / "discovery" / "rounds.json"
+        final_path = root / "data" / "discovery" / "final.json"
+        target_class = None
+        library_size = 0
+        if sig_path.exists():
+            target_class = load_signature(root).target_class
+            try:
+                lib = load_library(root)
+                library_size = len(lib["clause_types"]) + sum(
+                    len(ct["variations"]) for ct in lib["clause_types"])
+            except Exception:
+                library_size = 0
+        return {
+            "target_class": target_class,
+            "embedded_count": sum(1 for l in emb_path.read_text().splitlines() if l.strip())
+                              if emb_path.exists() else 0,
+            "rounds": json.loads(rounds_path.read_text()).get("rounds", [])
+                      if rounds_path.exists() else [],
+            "finalized": final_path.exists(),
+            "should_stop": should_stop(root),
+            "library_size": library_size,
+        }
+
+    def _discovery_library_payload() -> dict[str, object]:
+        try:
+            return load_library(root)
+        except ValueError:
+            return {"target_class": None, "clause_types": []}
+
+    def _discovery_chat_handler(payload: dict) -> dict[str, object]:
+        sig_in = payload.get("signature") or {}
+        message = str(payload.get("message", "")).strip()
+        save = bool(payload.get("save"))
+        initial = bool(payload.get("initial"))
+
+        DISCOVERY_OPENING = (
+            "Hi. I'm a discovery agent — give me a folder of contracts and I'll find the "
+            "ones of a specific type you're looking for, even if you have thousands of "
+            "them and no metadata.\n\n"
+            "Here's how this works in three rounds, about 15 minutes total:\n\n"
+            "(1) You tell me what to look for. I'll ask 4-5 questions to build a clear "
+            "signature: the contract type, what clauses it always has, what parties or "
+            "relationships it involves, and what would look similar but isn't actually it.\n\n"
+            "(2) I do the heavy lifting. I embed your whole corpus once, rank every "
+            "contract by similarity to your signature, and run a small local model on "
+            "the top candidates to make a yes/no judgment with a confidence score.\n\n"
+            "(3) I ask you to look at 20 borderline cases. I learn from your corrections "
+            "and re-rank. After 2-3 rounds I converge — you get a final list of "
+            "confirmed positives, plus a clause library showing every variation I've "
+            "seen of each defining clause.\n\n"
+            "To start: what type of contract are you looking for? Give me a one-line "
+            "description in your own words."
+        )
+        DISCOVERY_SYSTEM_PROMPT = (
+            "You are a discovery interview agent. Help the user define ONE target contract "
+            "class. Build a structured signature with clause TYPES, each with a "
+            "description, is_must_have flag, and 1-2 example phrasings. Ask focused "
+            "follow-ups about defining clauses and what should be excluded. Output strict "
+            "JSON only."
+        )
+
+        if initial:
+            return {"signature": sig_in, "assistant": DISCOVERY_OPENING,
+                    "engine": "scripted_opening"}
+
+        if save and sig_in.get("target_class") and sig_in.get("target_description"):
+            init_signature(root, interview=sig_in)
+            init_library_from_signature(root)
+            return {"signature": sig_in, "saved": True,
+                    "assistant": "Signature saved. Library seeded from your examples. Embed the corpus and run round 0.",
+                    "engine": "local_save"}
+
+        if _openai_interview_enabled():
+            prompt = {
+                "task": "Continue a discovery interview. Refine the structured signature.",
+                "current_signature": sig_in,
+                "user_message": message,
+                "schema": {
+                    "assistant": "string",
+                    "signature_updates": {
+                        "target_class": "string",
+                        "target_description": "string",
+                        "clause_types": [{
+                            "type": "string", "description": "string",
+                            "is_must_have": "boolean",
+                            "seed_variations": ["string"],
+                        }],
+                    },
+                    "ready_to_save": "boolean",
+                },
+            }
+            body = {
+                "model": _openai_model(),
+                "messages": [
+                    {"role": "system", "content": DISCOVERY_SYSTEM_PROMPT},
+                    {"role": "user", "content": json.dumps(prompt, indent=2)},
+                ],
+                "max_tokens": 800,
+                "response_format": {"type": "json_object"},
+            }
+            request = urllib.request.Request(
+                f"{_openai_base_url()}/chat/completions",
+                data=json.dumps(body).encode("utf-8"),
+                headers={"Authorization": f"Bearer {os.getenv('OPENAI_API_KEY','').strip()}",
+                         "Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=60) as r:
+                    resp = json.loads(r.read().decode("utf-8"))
+                content = resp["choices"][0]["message"]["content"]
+                parsed = _extract_json_object(content)
+                if isinstance(parsed, dict):
+                    updates = parsed.get("signature_updates") or {}
+                    merged = dict(sig_in)
+                    for k, v in updates.items():
+                        if v: merged[k] = v
+                    return {"signature": merged,
+                            "assistant": str(parsed.get("assistant") or ""),
+                            "ready_to_save": bool(parsed.get("ready_to_save")),
+                            "engine": "openai_api", "model": _openai_model()}
+            except Exception:
+                pass
+
+        return {"signature": sig_in,
+                "assistant": "Tell me one specific clause type that this contract type always contains, and give me a one-sentence example of how it usually reads.",
+                "engine": "local_discovery_fallback"}
 
     class Handler(BaseHTTPRequestHandler):
         def do_HEAD(self) -> None:
@@ -219,6 +419,10 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
                     self._send_json({"engine_integrity": "missing"})
                 else:
                     self._send_json(json.loads(p.read_text()))
+            elif parsed.path == "/api/discovery/state":
+                self._send_json(_discovery_state())
+            elif parsed.path == "/api/discovery/library":
+                self._send_json(_discovery_library_payload())
             else:
                 self.send_error(404)
 
@@ -312,6 +516,36 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
                 elif parsed.path == "/api/cuad-apply-holdout-gold":
                     from .pipeline import cuad_apply_holdout_gold
                     self._send_json(cuad_apply_holdout_gold(root))
+                elif parsed.path == "/api/interview/discovery-chat":
+                    payload = self._read_json()
+                    self._send_json(_discovery_chat_handler(payload))
+                elif parsed.path == "/api/discovery/embed":
+                    payload = self._read_json()
+                    self._send_json(embed_corpus(root, model=payload.get("model", "nomic-embed-text")))
+                elif parsed.path == "/api/discovery/run-round":
+                    payload = self._read_json()
+                    self._send_json(run_round(
+                        root,
+                        classifier_model=payload.get("classifier_model", "qwen3:4b"),
+                        top_k=int(payload.get("top_k", 200)),
+                        batch_size=int(payload.get("batch_size", 20)),
+                        round_index=int(payload.get("round_index", 0)),
+                        seed=int(payload.get("seed", 0)),
+                    ))
+                elif parsed.path == "/api/discovery/submit-labels":
+                    payload = self._read_json()
+                    self._send_json(submit_labels(
+                        root,
+                        round_index=int(payload.get("round_index", 0)),
+                        labels=payload.get("labels", []),
+                    ))
+                elif parsed.path == "/api/discovery/finalize":
+                    payload = self._read_json()
+                    self._send_json(finalize(
+                        root,
+                        round_index=int(payload.get("round_index", 0)),
+                        borderline_threshold=float(payload.get("borderline_threshold", 0.7)),
+                    ))
                 else:
                     self.send_error(404)
             except Exception as exc:  # Keep UI errors visible instead of crashing server.
