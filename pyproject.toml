@@ -18,5 +18,5 @@ pythonpath = ["src"]
 asyncio_mode = "auto"
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-asyncio", "httpx", "fastapi"]
+dev = ["pytest", "pytest-asyncio", "httpx", "fastapi", "numpy"]
 
