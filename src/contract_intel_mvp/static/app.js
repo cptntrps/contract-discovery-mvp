@@ -2093,16 +2093,89 @@ function escape(value) {
     const el = $id("discChat"); if (!el) return;
     while (el.firstChild) el.removeChild(el.firstChild);
     chatLog.forEach(m => {
-      const div = document.createElement("div");
-      div.style.margin = "4px 0"; div.style.padding = "8px 12px"; div.style.borderRadius = "6px";
-      div.style.background = m.role === "user" ? "#eef" : "#f4faf4";
-      div.style.whiteSpace = "pre-wrap";
-      div.textContent = (m.role === "user" ? "You: " : "Agent: ") + m.content;
-      el.appendChild(div);
+      const wrap = document.createElement("div");
+      wrap.className = "chatMessage " + (m.role === "user" ? "fromUser" : "fromAgent");
+      const label = document.createElement("span");
+      label.textContent = m.role === "user" ? "You" : "Agent";
+      wrap.appendChild(label);
+      const p = document.createElement("p");
+      p.style.whiteSpace = "pre-wrap";
+      p.textContent = m.content;
+      wrap.appendChild(p);
+      el.appendChild(wrap);
     });
     el.scrollTop = el.scrollHeight;
   }
-  function renderSig() { setText("discSignaturePreview", JSON.stringify(currentSig, null, 2)); }
+
+  function renderSig() {
+    const summary = $id("discSigSummary");
+    const types = $id("discClauseTypes");
+    const readiness = $id("discReadiness");
+    if (summary) {
+      while (summary.firstChild) summary.removeChild(summary.firstChild);
+      const fields = [
+        ["Target class", currentSig.target_class || "—"],
+        ["Description", currentSig.target_description || "—"],
+      ];
+      fields.forEach(([k, v]) => {
+        const row = document.createElement("div");
+        row.className = "detailField";
+        const lbl = document.createElement("span");
+        lbl.className = "detailFieldLabel"; lbl.textContent = k;
+        const val = document.createElement("span");
+        val.className = "detailFieldValue"; val.textContent = v;
+        row.appendChild(lbl); row.appendChild(val);
+        summary.appendChild(row);
+      });
+    }
+    if (types) {
+      while (types.firstChild) types.removeChild(types.firstChild);
+      const cts = currentSig.clause_types || [];
+      if (!cts.length) {
+        const empty = document.createElement("p");
+        empty.className = "muted"; empty.style.padding = "8px 12px";
+        empty.textContent = "No clause types yet — chat with the agent to define them.";
+        types.appendChild(empty);
+      } else {
+        cts.forEach(ct => {
+          const row = document.createElement("div");
+          row.style.padding = "8px 12px";
+          row.style.borderBottom = "1px solid var(--line, #eee)";
+          row.style.fontSize = "12px";
+          const tag = document.createElement("span");
+          tag.textContent = ct.is_must_have ? "MUST " : "NOT ";
+          tag.style.fontWeight = "650";
+          tag.style.color = ct.is_must_have ? "#1a7" : "#a31";
+          tag.style.fontSize = "10px"; tag.style.marginRight = "6px";
+          row.appendChild(tag);
+          const name = document.createElement("strong");
+          name.textContent = ct.type;
+          row.appendChild(name);
+          if (ct.description) {
+            const desc = document.createElement("div");
+            desc.style.color = "#666"; desc.style.fontSize = "11px"; desc.style.marginTop = "2px";
+            desc.textContent = ct.description;
+            row.appendChild(desc);
+          }
+          (ct.seed_variations || []).slice(0, 2).forEach(v => {
+            const ex = document.createElement("div");
+            ex.style.fontSize = "11px"; ex.style.color = "#888";
+            ex.style.marginTop = "3px"; ex.style.fontStyle = "italic";
+            ex.textContent = "“" + v + "”";
+            row.appendChild(ex);
+          });
+          types.appendChild(row);
+        });
+      }
+    }
+    if (readiness) {
+      const ready = (currentSig.target_class || "").trim() &&
+                    (currentSig.target_description || "").trim() &&
+                    (currentSig.clause_types || []).length > 0;
+      readiness.textContent = ready ? "Ready" : "Draft";
+      readiness.className = "badge " + (ready ? "ok" : "warn");
+    }
+  }
 
   async function showOpening() {
     if (openingShown) return;

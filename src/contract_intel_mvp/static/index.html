@@ -510,16 +510,33 @@
           </section>
 
           <section class="panel">
-            <h3>2. Define what you're looking for</h3>
-            <div id="discChat" style="max-height: 320px; overflow: auto; border: 1px solid #eee; padding: 8px; margin-bottom: 8px; background: white;"></div>
-            <div style="display: flex; gap: 8px;">
-              <input id="discChatInput" placeholder="e.g. I'm looking for license agreements..." style="flex: 1;" />
-              <button id="discChatSend" type="button">Send</button>
+            <div class="coverHeader">
+              <div>
+                <h3>2. Define what you're looking for</h3>
+                <p class="muted">Chat with the discovery agent to define one target contract class. The agent asks about defining clauses, parties, and what should be excluded.</p>
+              </div>
+              <button id="discSaveSig" type="button">Save signature</button>
             </div>
-            <details style="margin-top: 12px;"><summary>Current signature (advanced)</summary>
-              <pre id="discSignaturePreview" style="font-size: 11px; background: #fafafa; padding: 8px;"></pre>
-            </details>
-            <p style="margin-top: 8px;"><button id="discSaveSig" type="button">Save signature & start discovery</button></p>
+            <div class="interviewLayout">
+              <section class="chatPanel" aria-label="Discovery agent chat">
+                <div id="discChat" class="chatTranscript"></div>
+                <div class="chatComposer">
+                  <input id="discChatInput" placeholder="e.g. I'm looking for license agreements..." />
+                  <button id="discChatSend" type="button">Send</button>
+                </div>
+              </section>
+              <aside class="queueDetail">
+                <div class="queueDetailHeader">
+                  <h3>Class Signature</h3>
+                  <span id="discReadiness" class="badge warn">Draft</span>
+                </div>
+                <div id="discSigSummary" class="detailFields"></div>
+                <div class="detailSection">
+                  <strong>Clause types</strong>
+                </div>
+                <div id="discClauseTypes" class="rows"></div>
+              </aside>
+            </div>
           </section>
 
           <section class="panel">
