@@ -1820,6 +1820,13 @@ function pct(value) {
   return value === null || value === undefined ? "-" : `${Math.round(Number(value) * 100)}%`;
 }
 
+function pctFraction(numerator, denominator) {
+  const n = Number(numerator) || 0;
+  const d = Number(denominator) || 0;
+  if (d <= 0) return "-";
+  return `${Math.round((n / d) * 100)}%`;
+}
+
 function metricDelta(before, after) {
   if (before === null || before === undefined || after === null || after === undefined) return "-";
   const delta = Number(after) - Number(before);
