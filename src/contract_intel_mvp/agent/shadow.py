@@ -19,14 +19,23 @@ class ShadowPair:
 async def _async_call_ollama_json(*, model: str, prompt: str,
                                   base_url: str = "http://127.0.0.1:11434"
                                   ) -> dict[str, Any] | None:
-    payload = {"model": model, "prompt": prompt, "format": "json", "stream": False}
+    payload = {"model": model, "prompt": prompt, "format": "json", "stream": False,
+               "options": {"temperature": 0.1}}
     try:
         async with httpx.AsyncClient(timeout=120) as client:
             r = await client.post(f"{base_url}/api/generate", json=payload)
             r.raise_for_status()
-            return _json.loads(r.json()["response"])
+            envelope = r.json()
     except Exception:
         return None
+    text = envelope.get("response", "") or envelope.get("thinking", "")
+    if not text:
+        return None
+    try:
+        parsed = _json.loads(text)
+    except _json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 def _heuristic_extraction_stub() -> dict[str, Any]:
