@@ -2310,15 +2310,28 @@ function escape(value) {
 
   async function runRound() {
     const idx = parseInt($id("discRoundIdx").value || "0", 10);
-    const topK = parseInt($id("discTopK").value || "200", 10);
-    const batch = parseInt($id("discBatch").value || "20", 10);
-    setText("discRoundResult", "running... (calls the LLM once per top-K candidate)");
-    const r = await pj("/api/discovery/run-round",
-                       {round_index: idx, top_k: topK, batch_size: batch,
-                        classifier_model: "qwen3:4b"});
-    setText("discRoundResult", JSON.stringify(r, null, 2));
-    await loadReviewQueue(idx);
-    pollState(); pollLibrary();
+    const topK = parseInt($id("discTopK").value || "30", 10);
+    const batch = parseInt($id("discBatch").value || "12", 10);
+    const btn = $id("discRunRoundBtn");
+    const progress = $id("discRoundProgress");
+    if (btn) { btn.disabled = true; btn.textContent = "Reading contracts…"; }
+    if (progress) progress.textContent = `Reading ~${topK} contracts. This usually takes 1-3 minutes.`;
+    setText("discRoundResult", "");
+    try {
+      const r = await pj("/api/discovery/run-round",
+                         {round_index: idx, top_k: topK, batch_size: batch,
+                          classifier_model: "qwen3:4b"});
+      const m = (r.metrics || {});
+      if (progress) progress.textContent =
+        `Done — looked at ${r.classifications_count} contracts; ${r.review_queue_size} need your review in step 4.`;
+      setText("discRoundResult", JSON.stringify(r, null, 2));
+      await loadReviewQueue(idx);
+    } catch (e) {
+      if (progress) progress.textContent = "Error: " + e;
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = "Find matches"; }
+      pollState(); pollLibrary();
+    }
   }
 
   async function loadReviewQueue(idx) {
