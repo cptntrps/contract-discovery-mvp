@@ -162,3 +162,27 @@ def _reviewed_context_text(taxonomy: dict[str, Any]) -> str:
     for pattern in taxonomy.get("rejected_patterns", []):
         lines.append(f"- Rejected pattern: {pattern}")
     return "\n".join(lines)
+
+
+DISCOVERY_CLASSIFY_PROMPT = """You are deciding whether a single contract belongs to a target class.
+
+{library_block}
+
+Contract under review (first 6000 chars):
+{doc_text}
+
+Answer in JSON only. Schema:
+{{
+  "verdict": "yes" | "no",
+  "confidence": <float 0..1>,
+  "evidence_per_clause_type": {{
+     "<clause_type_name>": "<verbatim substring from the contract that exemplifies that clause type, max 300 chars, or empty string if not present>"
+  }},
+  "rationale": "<one sentence>"
+}}
+
+Rules:
+- evidence_per_clause_type MUST contain a key for every clause_type listed above.
+- Each evidence value MUST be an exact substring of the contract or "" if not present.
+- "yes" only if ALL must-have clause types are present and NO must-not-have clause type is the primary purpose.
+"""
