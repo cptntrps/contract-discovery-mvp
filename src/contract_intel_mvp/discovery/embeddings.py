@@ -47,18 +47,31 @@ def embed_corpus(root: Path, *, model: str = "nomic-embed-text",
     out_path = _emb_path(root)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     existing = _read_existing(out_path)
-    embedded = skipped = failed = 0
+    embedded = skipped = 0
+    failed_doc_ids: list[dict[str, str]] = []
     with out_path.open("a", encoding="utf-8") as f:
         for line in docs_path.read_text(encoding="utf-8").splitlines():
             if not line.strip(): continue
             doc = json.loads(line); doc_id = doc["doc_id"]
             if doc_id in existing and existing[doc_id].get("model") == model:
                 skipped += 1; continue
-            vec = _call_ollama_embed((doc.get("text") or "")[:max_chars], model=model)
-            if vec is None: failed += 1; continue
+            text = (doc.get("text") or "")[:max_chars]
+            if not text.strip():
+                failed_doc_ids.append({"doc_id": doc_id, "reason": "empty_text"})
+                continue
+            vec = _call_ollama_embed(text, model=model)
+            if vec is None:
+                # Retry once with a smaller chunk in case of length / encoding edge cases.
+                vec = _call_ollama_embed(text[:2000], model=model)
+            if vec is None:
+                failed_doc_ids.append({"doc_id": doc_id, "reason": "ollama_none",
+                                        "title": (doc.get("title") or "")[:80],
+                                        "text_len": len(text)})
+                continue
             f.write(json.dumps({"doc_id": doc_id, "model": model, "embedding": vec}) + "\n")
             embedded += 1
-    return {"embedded": embedded, "skipped": skipped, "failed": failed,
+    return {"embedded": embedded, "skipped": skipped, "failed": len(failed_doc_ids),
+            "failed_doc_ids": failed_doc_ids,
             "path": str(out_path.relative_to(root))}
 
 

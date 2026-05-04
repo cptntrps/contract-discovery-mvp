@@ -60,8 +60,12 @@ def _detect_discovery_stage(sig: dict, message: str) -> dict:
 
     if not tc:
         return {"stage": 1, "instruction":
-                "STAGE 1: Save the user's reply as target_class and "
-                "advance immediately to STAGE 2 (propose BU and region with bullets)."}
+                "STAGE 1: From the user's reply, extract a SHORT canonical name for "
+                "the contract type (2-4 words, Title Case, e.g. 'License Agreement', "
+                "'Distribution Agreement', 'Endorsement Agreement', 'Publishing "
+                "Agreement'). Save THAT short canonical name as target_class. "
+                "Do NOT save the user's whole sentence verbatim. "
+                "Then advance immediately to STAGE 2 (propose BU and region as bullets)."}
     if not td:
         return {"stage": 2, "instruction":
                 "STAGE 2: Save the user's reply (expanded if abbreviated) into "
