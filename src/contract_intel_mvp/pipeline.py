@@ -1607,11 +1607,12 @@ def extract_split(root: Path, *, split: str, primary_model: str, shadow_model: s
         primary_verified["engine"] = pair.primary_engine
         primary_verified["role"] = "primary"
         primary_rows.append(primary_verified)
-        shadow_row = dict(pair.shadow)
-        shadow_row["doc_id"] = doc.doc_id
-        shadow_row["engine"] = pair.shadow_engine
-        shadow_row["role"] = "shadow"
-        shadow_rows.append(shadow_row)
+        shadow_verified, _ = extract_with_verification(
+            source_text=doc.text, model=shadow_model, initial_extraction=pair.shadow)
+        shadow_verified["doc_id"] = doc.doc_id
+        shadow_verified["engine"] = pair.shadow_engine
+        shadow_verified["role"] = "shadow"
+        shadow_rows.append(shadow_verified)
 
     runs = root / "data" / "runs"
     runs.mkdir(parents=True, exist_ok=True)
