@@ -313,7 +313,7 @@ def build_app(root: Path):
                     {"role": "system", "content": DISCOVERY_SYSTEM_PROMPT},
                     {"role": "user", "content": json.dumps(prompt, indent=2)},
                 ],
-                "max_completion_tokens": 1500,
+                "max_completion_tokens": 4000,
                 "response_format": {"type": "json_object"},
             }
             request = urllib.request.Request(
@@ -499,7 +499,7 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
                     {"role": "system", "content": DISCOVERY_SYSTEM_PROMPT},
                     {"role": "user", "content": json.dumps(prompt, indent=2)},
                 ],
-                "max_completion_tokens": 1500,
+                "max_completion_tokens": 4000,
                 "response_format": {"type": "json_object"},
             }
             request = urllib.request.Request(
@@ -1284,7 +1284,7 @@ def _call_openai_interview(
             },
             {"role": "user", "content": json.dumps(prompt, indent=2)},
         ],
-        "max_completion_tokens": 1500,
+        "max_completion_tokens": 4000,
         "response_format": {"type": "json_object"},
     }
     request = urllib.request.Request(
