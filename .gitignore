@@ -8,3 +8,4 @@ adapters/
 *.db
 *.db-wal
 *.db-shm
+src/*.egg-info/
