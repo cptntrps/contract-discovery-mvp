@@ -413,22 +413,33 @@ def _chat_interview(root: Path, payload: dict[str, object]) -> dict[str, object]
     engine = "local_interview_fallback"
     model = None
     codex_error = None
-    codex_result = _call_livingos_codex_interview(
-        interview=normalized,
-        field=field,
-        message=message,
-        next_field=next_field,
-        ready=ready,
+    api_result = _call_openai_interview(
+        interview=normalized, field=field, message=message,
+        next_field=next_field, ready=ready,
     )
-    if codex_result:
-        normalized = _merge_chat_updates(normalized, codex_result.get("updates"))
-        next_field = str(codex_result.get("next_field") or _next_interview_field(normalized))
+    if api_result:
+        normalized = _merge_chat_updates(normalized, api_result.get("updates"))
+        next_field = str(api_result.get("next_field") or _next_interview_field(normalized))
         ready = _interview_ready(normalized)
-        response = str(codex_result.get("assistant") or _interview_reply(normalized, next_field))
-        engine = "livingos_api_codex"
-        model = _livingos_api_model()
-    elif _livingos_api_configured():
-        codex_error = "LivingOS API Codex unavailable or returned invalid JSON; local interview fallback used."
+        response = str(api_result.get("assistant") or _interview_reply(normalized, next_field))
+        engine = "openai_api"
+        model = _openai_model()
+    else:
+        if _openai_interview_enabled():
+            codex_error = "OpenAI API unavailable or returned invalid JSON; falling through."
+        codex_result = _call_livingos_codex_interview(
+            interview=normalized, field=field, message=message,
+            next_field=next_field, ready=ready,
+        )
+        if codex_result:
+            normalized = _merge_chat_updates(normalized, codex_result.get("updates"))
+            next_field = str(codex_result.get("next_field") or _next_interview_field(normalized))
+            ready = _interview_ready(normalized)
+            response = str(codex_result.get("assistant") or _interview_reply(normalized, next_field))
+            engine = "livingos_api_codex"
+            model = _livingos_api_model()
+        elif _livingos_api_configured():
+            codex_error = (codex_error or "") + " LivingOS API Codex also unavailable; local interview fallback used."
     saved = None
     if ready:
         saved = save_interview_payload(root, normalized)
@@ -640,7 +651,104 @@ def _livingos_api_status() -> dict[str, object]:
         "interview_enabled": _livingos_api_enabled(),
         "base_url": _livingos_api_base_url(),
         "model": _livingos_api_model() if _livingos_api_configured() else None,
+        "openai_configured": _openai_configured(),
+        "openai_interview_enabled": _openai_interview_enabled(),
+        "openai_model": _openai_model() if _openai_configured() else None,
     }
+
+
+def _openai_configured() -> bool:
+    return bool(os.getenv("OPENAI_API_KEY", "").strip())
+
+
+def _openai_interview_enabled() -> bool:
+    value = os.getenv("OPENAI_INTERVIEW", "").strip().lower()
+    return _openai_configured() and value in {"1", "true", "yes", "on"}
+
+
+def _openai_model() -> str:
+    return os.getenv("OPENAI_API_MODEL", "gpt-4o-mini").strip()
+
+
+def _openai_base_url() -> str:
+    return os.getenv("OPENAI_API_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+
+
+def _call_openai_interview(
+    *,
+    interview: dict[str, object],
+    field: str,
+    message: str,
+    next_field: str,
+    ready: bool,
+) -> dict[str, object] | None:
+    if not _openai_interview_enabled():
+        return None
+    prompt = {
+        "task": "Continue a business-level contract corpus setup interview.",
+        "rules": [
+            "Return JSON only.",
+            "Do not ask the user to validate raw entities.",
+            "Ask exactly one concise next question unless ready is true and no next_field remains.",
+            "Preserve existing memory. Only include updates that are supported by the user's latest answer.",
+        ],
+        "schema": {
+            "assistant": "string",
+            "updates": {
+                "goal": "string",
+                "business_unit": "string",
+                "region": "string",
+                "expected_contract_types": ["string"],
+                "contract_type_aliases": {"Canonical Type": ["Alias"]},
+                "key_clause_families": ["string"],
+                "not_expected": ["string"],
+                "review_priorities": ["string"],
+            },
+            "next_field": "string",
+            "ready": "boolean",
+        },
+        "current_interview_memory": interview,
+        "latest_answer": {"field": field, "message": message},
+        "local_next_field": next_field,
+        "local_ready": ready,
+        "questions": _INTERVIEW_FIELDS,
+    }
+    body = {
+        "model": _openai_model(),
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are an interview agent for a contract intelligence MVP. Output strict JSON only.",
+            },
+            {"role": "user", "content": json.dumps(prompt, indent=2)},
+        ],
+        "max_tokens": 600,
+        "response_format": {"type": "json_object"},
+    }
+    request = urllib.request.Request(
+        f"{_openai_base_url()}/chat/completions",
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY', '').strip()}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        content = payload["choices"][0]["message"]["content"]
+        parsed = _extract_json_object(content)
+        if isinstance(parsed, dict):
+            return parsed
+        return {
+            "assistant": content.strip(),
+            "updates": {},
+            "next_field": next_field,
+            "ready": ready,
+        }
+    except (KeyError, json.JSONDecodeError, urllib.error.URLError, TimeoutError):
+        return None
 
 
 def _call_livingos_codex_interview(
