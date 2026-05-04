@@ -403,12 +403,26 @@ def build_app(root: Path):
 
     @app.post("/api/discovery/run-round")
     def discovery_run_round(payload: dict):
-        return run_round(root,
-                         classifier_model=payload.get("classifier_model", "qwen3:4b"),
-                         top_k=int(payload.get("top_k", 200)),
-                         batch_size=int(payload.get("batch_size", 20)),
-                         round_index=int(payload.get("round_index", 0)),
-                         seed=int(payload.get("seed", 0)))
+        from .discovery.jobs import start_job
+        kwargs = dict(
+            classifier_model=payload.get("classifier_model", "qwen3:4b"),
+            top_k=int(payload.get("top_k", 200)),
+            batch_size=int(payload.get("batch_size", 20)),
+            round_index=int(payload.get("round_index", 0)),
+            seed=int(payload.get("seed", 0)),
+        )
+        if payload.get("async"):
+            def _go(progress_cb=None, **kw):
+                return run_round(root, progress_cb=progress_cb, **kw)
+            job_id = start_job(root, kind="run_round", target=_go, kwargs=kwargs)
+            return {"job_id": job_id, "status": "running", "async": True}
+        return run_round(root, **kwargs)
+
+    @app.get("/api/discovery/job/{job_id}")
+    def discovery_job(job_id: str):
+        from .discovery.jobs import get_status
+        s = get_status(root, job_id)
+        return s or {"error": f"unknown job_id {job_id}"}
 
     @app.post("/api/discovery/submit-labels")
     def discovery_submit_labels(payload: dict):
@@ -593,6 +607,11 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
                 self._send_json(_discovery_state())
             elif parsed.path == "/api/discovery/library":
                 self._send_json(_discovery_library_payload())
+            elif parsed.path.startswith("/api/discovery/job/"):
+                job_id = parsed.path.rsplit("/", 1)[-1]
+                from .discovery.jobs import get_status
+                s = get_status(root, job_id)
+                self._send_json(s or {"error": f"unknown job_id {job_id}"})
             else:
                 self.send_error(404)
 
@@ -694,14 +713,21 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
                     self._send_json(embed_corpus(root, model=payload.get("model", "nomic-embed-text")))
                 elif parsed.path == "/api/discovery/run-round":
                     payload = self._read_json()
-                    self._send_json(run_round(
-                        root,
+                    from .discovery.jobs import start_job
+                    kwargs = dict(
                         classifier_model=payload.get("classifier_model", "qwen3:4b"),
                         top_k=int(payload.get("top_k", 200)),
                         batch_size=int(payload.get("batch_size", 20)),
                         round_index=int(payload.get("round_index", 0)),
                         seed=int(payload.get("seed", 0)),
-                    ))
+                    )
+                    if payload.get("async"):
+                        def _go(progress_cb=None, **kw):
+                            return run_round(root, progress_cb=progress_cb, **kw)
+                        job_id = start_job(root, kind="run_round", target=_go, kwargs=kwargs)
+                        self._send_json({"job_id": job_id, "status": "running", "async": True})
+                    else:
+                        self._send_json(run_round(root, **kwargs))
                 elif parsed.path == "/api/discovery/submit-labels":
                     payload = self._read_json()
                     self._send_json(submit_labels(

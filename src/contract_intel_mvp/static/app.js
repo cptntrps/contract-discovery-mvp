@@ -2310,22 +2310,47 @@ function escape(value) {
 
   async function runRound() {
     const idx = parseInt($id("discRoundIdx").value || "0", 10);
-    const topK = parseInt($id("discTopK").value || "30", 10);
-    const batch = parseInt($id("discBatch").value || "12", 10);
+    const topK = parseInt($id("discTopK").value || "300", 10);
+    const batch = parseInt($id("discBatch").value || "30", 10);
     const btn = $id("discRunRoundBtn");
     const progress = $id("discRoundProgress");
-    if (btn) { btn.disabled = true; btn.textContent = "Reading contracts…"; }
-    if (progress) progress.textContent = `Reading ~${topK} contracts. This usually takes 1-3 minutes.`;
+    if (btn) { btn.disabled = true; btn.textContent = "Starting…"; }
+    if (progress) progress.textContent = `Queued. Reading up to ${topK} contracts. Each takes ~3 seconds.`;
     setText("discRoundResult", "");
     try {
-      const r = await pj("/api/discovery/run-round",
-                         {round_index: idx, top_k: topK, batch_size: batch,
-                          classifier_model: "qwen3:4b"});
-      const m = (r.metrics || {});
-      if (progress) progress.textContent =
-        `Done — looked at ${r.classifications_count} contracts; ${r.review_queue_size} need your review in step 4.`;
-      setText("discRoundResult", JSON.stringify(r, null, 2));
-      await loadReviewQueue(idx);
+      const start = await pj("/api/discovery/run-round",
+                             {round_index: idx, top_k: topK, batch_size: batch,
+                              classifier_model: "qwen3:4b", async: true});
+      if (!start.job_id) {
+        if (progress) progress.textContent = "Error starting job: " + JSON.stringify(start);
+        return;
+      }
+      // Poll job status until done.
+      let done = false;
+      while (!done) {
+        await new Promise(r => setTimeout(r, 2000));
+        const s = await gj("/api/discovery/job/" + encodeURIComponent(start.job_id));
+        if (!s || s.error) {
+          if (progress) progress.textContent = "Job error: " + (s && s.error || "unknown");
+          break;
+        }
+        const p = s.progress || 0, t = s.total || topK;
+        if (btn) btn.textContent = `Reading… ${p}/${t}`;
+        if (progress) progress.textContent =
+          `Reading contracts… ${p}/${t} done` + (s.note ? ` (${s.note.slice(0, 80)})` : "");
+        if (s.status === "done") {
+          done = true;
+          const r = s.result || {};
+          if (progress) progress.textContent =
+            `Done — looked at ${r.classifications_count || t} contracts; ${r.review_queue_size || batch} need your review in step 4.`;
+          setText("discRoundResult", JSON.stringify(r, null, 2));
+          await loadReviewQueue(idx);
+        } else if (s.status === "error") {
+          done = true;
+          if (progress) progress.textContent = "Error: " + (s.error || "unknown");
+          setText("discRoundResult", JSON.stringify(s, null, 2));
+        }
+      }
     } catch (e) {
       if (progress) progress.textContent = "Error: " + e;
     } finally {

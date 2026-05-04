@@ -573,17 +573,17 @@
                 <div>
                   <label style="display: flex; align-items: center; gap: 8px; font-weight: 650;">
                     How many contracts to read
-                    <input id="discTopK" type="number" value="30" style="width: 70px;" />
+                    <input id="discTopK" type="number" value="300" style="width: 70px;" />
                   </label>
                   <p style="margin: 4px 0 0 0; color: #666; font-size: 11px;">
-                    The agent ranks all your contracts by similarity to what you're looking for, then runs the language model on the top N. Higher = more thorough, but slower (≈3–5 seconds per contract). For a 50-doc corpus 30 is enough; for 1000+ docs use 200–500.
+                    The agent ranks all your contracts by similarity to what you're looking for, then runs the language model on the top N. Higher = more thorough, but slower (≈3–5 seconds per contract). 50-doc corpus: 30. 500-doc: 300. 5,000+: 1,000–2,000.
                   </p>
                 </div>
 
                 <div>
                   <label style="display: flex; align-items: center; gap: 8px; font-weight: 650;">
                     How many to review
-                    <input id="discBatch" type="number" value="12" style="width: 70px;" />
+                    <input id="discBatch" type="number" value="30" style="width: 70px;" />
                   </label>
                   <p style="margin: 4px 0 0 0; color: #666; font-size: 11px;">
                     How many borderline cases to surface for your yes/no review in step 4. The agent picks a mix: high-confidence positives (verify), low-confidence positives (catch false alarms), borderline negatives (catch missed matches). 12 is a good default; raise it if you want more thorough QA.

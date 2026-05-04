@@ -12,9 +12,14 @@ from contract_intel_mvp.discovery.signature import load_signature
 
 
 def run_round(root: Path, *, classifier_model: str, top_k: int = 200,
-              batch_size: int = 20, round_index: int, seed: int = 0) -> dict[str, Any]:
+              batch_size: int = 20, round_index: int, seed: int = 0,
+              progress_cb=None) -> dict[str, Any]:
+    if progress_cb is not None:
+        progress_cb(0, top_k, "ranking corpus")
     ranked = rank_corpus(root, top_k=top_k)
-    classifications = classify_candidates(root, candidates=ranked, model=classifier_model)
+    classifications = classify_candidates(root, candidates=ranked,
+                                          model=classifier_model,
+                                          progress_cb=progress_cb)
     queue = sample_for_review(root, classifications=classifications,
                               batch_size=batch_size, seed=seed)
     metrics = current_metrics(root, classifications=classifications)

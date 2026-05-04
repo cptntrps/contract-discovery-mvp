@@ -42,12 +42,14 @@ def _heuristic_classify(doc_text: str, lib: dict) -> dict[str, Any]:
 
 
 def classify_candidates(root: Path, *, candidates: list[dict[str, Any]],
-                        model: str) -> list[dict[str, Any]]:
+                        model: str,
+                        progress_cb=None) -> list[dict[str, Any]]:
     lib = load_library(root)
     library_block = render_library_text(root, max_per_type=5)
     docs_by_id = _load_docs_by_id(root)
     results = []
-    for cand in candidates:
+    total = len(candidates)
+    for i, cand in enumerate(candidates):
         doc = docs_by_id.get(cand["doc_id"])
         if doc is None:
             continue
@@ -76,4 +78,9 @@ def classify_candidates(root: Path, *, candidates: list[dict[str, Any]],
         parsed["screen_score"] = cand.get("score")
         parsed["engine"] = engine
         results.append(parsed)
+        if progress_cb is not None:
+            try:
+                progress_cb(i + 1, total, f"classifying {cand['doc_id']}")
+            except Exception:
+                pass
     return results
