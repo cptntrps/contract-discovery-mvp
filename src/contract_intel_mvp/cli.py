@@ -79,6 +79,10 @@ def main() -> None:
 
     sub.add_parser("benchmark", help="Compare baseline and reviewed-context runs")
 
+    split = sub.add_parser("split", help="Partition the corpus into review_set and holdout_set")
+    split.add_argument("--review-frac", type=float, default=0.57)
+    split.add_argument("--seed", type=int, default=42)
+
     sub.add_parser("demo-report", help="Write a Markdown/JSON demo report")
 
     ui = sub.add_parser("ui", help="Run the local web UI")
@@ -135,6 +139,10 @@ def main() -> None:
     elif args.command == "demo-report":
         result = generate_demo_report(Path.cwd())
         print(json.dumps(result, indent=2))
+    elif args.command == "split":
+        from .splits import make_splits
+        out = make_splits(Path.cwd(), review_frac=args.review_frac, seed=args.seed)
+        print(f"split: {len(out['review_set'])} review, {len(out['holdout_set'])} holdout, seed={out['split_seed']}")
     elif args.command == "ui":
         run_server(Path.cwd(), host=args.host, port=args.port)
 
