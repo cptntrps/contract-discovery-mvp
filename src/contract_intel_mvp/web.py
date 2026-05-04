@@ -68,6 +68,16 @@ def _detect_discovery_stage(sig: dict, message: str) -> dict:
                 "target_description as '<Division> / <Region>', then propose the "
                 "definition (STAGE 3) in the same response."}
     if not cts:
+        if affirm:
+            return {"stage": 4, "instruction":
+                    "STAGE 4 (definition was just confirmed): User said yes/affirmative. "
+                    "You MUST now PROPOSE 3-5 typical must-have clauses for this "
+                    "contract type, in plain English with descriptions and one example "
+                    "phrasing each. You MUST set signature_updates.clause_types to a "
+                    "list of 3-5 objects, each with type, description, "
+                    "is_must_have=true, and seed_variations (one example string). "
+                    "Do NOT just talk about clauses — actually populate clause_types "
+                    "in the JSON output."}
         return {"stage": 3, "instruction":
                 "STAGE 3: Propose a one-sentence plain-English definition of the "
                 "target contract type and ask 'Does that sound right?'. "
