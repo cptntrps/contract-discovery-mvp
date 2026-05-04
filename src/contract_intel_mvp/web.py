@@ -387,6 +387,25 @@ def _chat_interview(root: Path, payload: dict[str, object]) -> dict[str, object]
 
     normalized = _normalize_interview(interview)
     if _interview_complete(normalized) and not _looks_like_memory_update(message):
+        # Try OpenAI first so casual follow-ups get a real conversational reply.
+        api_result = _call_openai_interview(
+            interview=normalized, field=field or "review_priorities",
+            message=message, next_field="", ready=True,
+        )
+        if api_result:
+            normalized = _merge_chat_updates(normalized, api_result.get("updates"))
+            saved = save_interview_payload(root, normalized)
+            return {
+                "interview": normalized,
+                "field": "",
+                "next_field": "",
+                "ready": True,
+                "saved": saved,
+                "assistant": str(api_result.get("assistant") or _post_completion_reply(normalized, message)),
+                "engine": "openai_api",
+                "model": _openai_model(),
+                "codex_error": None,
+            }
         response = _post_completion_reply(normalized, message)
         saved = save_interview_payload(root, normalized)
         return {
