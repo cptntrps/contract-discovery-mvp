@@ -25,12 +25,13 @@ def _now() -> str:
 
 def write_status(root: Path, job_id: str, **fields: Any) -> None:
     p = _job_path(root, job_id)
-    state = {}
+    state: dict[str, Any] = {}
     if p.exists():
         try:
             state = json.loads(p.read_text(encoding="utf-8"))
         except Exception:
             state = {}
+    state["job_id"] = job_id
     state.update(fields)
     state["updated_at"] = _now()
     p.write_text(json.dumps(state, indent=2), encoding="utf-8")
@@ -51,7 +52,7 @@ def start_job(root: Path, *, kind: str, target: Callable[..., Any],
     """Spawn target(progress_cb=..., **kwargs) in a daemon thread. Returns job_id."""
     kwargs = dict(kwargs or {})
     job_id = str(uuid.uuid4())
-    write_status(root, job_id, job_id=job_id, kind=kind, status="running",
+    write_status(root, job_id, kind=kind, status="running",
                  started_at=_now(), progress=0, total=0)
 
     def _progress_cb(done: int, total: int, note: str = "") -> None:
