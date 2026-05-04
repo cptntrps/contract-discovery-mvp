@@ -724,8 +724,26 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
                             continue
                     from .pipeline import ingest_folder
                     ingested = ingest_folder(upload_dir, root)
+                    # Clear stale discovery state — new folder starts fresh.
+                    disc_dir = root / "data" / "discovery"
+                    for stale in ("clause_library.json", "signature.json",
+                                  "embeddings.jsonl", "rounds.json", "final.json",
+                                  "borderline.json"):
+                        p = disc_dir / stale
+                        if p.exists():
+                            try: p.unlink()
+                            except Exception: pass
+                    # Wipe per-round files too.
+                    if disc_dir.exists():
+                        for p in disc_dir.iterdir():
+                            if p.name.startswith(("classifications_round_",
+                                                   "review_queue_round_",
+                                                   "shadow_")):
+                                try: p.unlink()
+                                except Exception: pass
                     self._send_json({"received": written, "ingested": ingested,
-                                     "upload_dir": str(upload_dir.relative_to(root))})
+                                     "upload_dir": str(upload_dir.relative_to(root)),
+                                     "discovery_state_reset": True})
                 elif parsed.path == "/api/split":
                     payload = self._read_json()
                     from .splits import make_splits
