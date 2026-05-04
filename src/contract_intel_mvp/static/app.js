@@ -2107,65 +2107,59 @@ function escape(value) {
     el.scrollTop = el.scrollHeight;
   }
 
+  function syncSigFromDOM() {
+    // Pull all editable values back into currentSig before sending or rendering.
+    const tcEl = $id("discEditTargetClass");
+    const tdEl = $id("discEditTargetDescription");
+    if (tcEl) currentSig.target_class = tcEl.value;
+    if (tdEl) currentSig.target_description = tdEl.value;
+    const ctsRoot = $id("discClauseTypes");
+    if (ctsRoot) {
+      const cards = ctsRoot.querySelectorAll(".clauseCard");
+      const out = [];
+      cards.forEach(card => {
+        const idx = parseInt(card.getAttribute("data-idx"), 10);
+        const orig = (currentSig.clause_types || [])[idx] || {};
+        const nameEl = card.querySelector(".clauseName");
+        const descEl = card.querySelector(".clauseDesc");
+        const examplesEl = card.querySelector(".clauseExamples");
+        const mustEl = card.querySelector(".clauseMust");
+        out.push({
+          type: nameEl ? nameEl.value : orig.type,
+          description: descEl ? descEl.value : (orig.description || ""),
+          is_must_have: mustEl ? mustEl.value === "must" : !!orig.is_must_have,
+          seed_variations: examplesEl
+            ? examplesEl.value.split("\n").map(s => s.trim()).filter(Boolean)
+            : (orig.seed_variations || []),
+        });
+      });
+      currentSig.clause_types = out;
+    }
+  }
+
   function renderSig() {
-    const summary = $id("discSigSummary");
+    const tcEl = $id("discEditTargetClass");
+    const tdEl = $id("discEditTargetDescription");
+    if (tcEl && document.activeElement !== tcEl) tcEl.value = currentSig.target_class || "";
+    if (tdEl && document.activeElement !== tdEl) tdEl.value = currentSig.target_description || "";
+
     const types = $id("discClauseTypes");
     const readiness = $id("discReadiness");
-    if (summary) {
-      while (summary.firstChild) summary.removeChild(summary.firstChild);
-      const fields = [
-        ["Target class", currentSig.target_class || "—"],
-        ["Description", currentSig.target_description || "—"],
-      ];
-      fields.forEach(([k, v]) => {
-        const row = document.createElement("div");
-        row.className = "detailField";
-        const lbl = document.createElement("span");
-        lbl.className = "detailFieldLabel"; lbl.textContent = k;
-        const val = document.createElement("span");
-        val.className = "detailFieldValue"; val.textContent = v;
-        row.appendChild(lbl); row.appendChild(val);
-        summary.appendChild(row);
-      });
-    }
     if (types) {
-      while (types.firstChild) types.removeChild(types.firstChild);
-      const cts = currentSig.clause_types || [];
-      if (!cts.length) {
-        const empty = document.createElement("p");
-        empty.className = "muted"; empty.style.padding = "8px 12px";
-        empty.textContent = "No clause types yet — chat with the agent to define them.";
-        types.appendChild(empty);
-      } else {
-        cts.forEach(ct => {
-          const row = document.createElement("div");
-          row.style.padding = "8px 12px";
-          row.style.borderBottom = "1px solid var(--line, #eee)";
-          row.style.fontSize = "12px";
-          const tag = document.createElement("span");
-          tag.textContent = ct.is_must_have ? "MUST " : "NOT ";
-          tag.style.fontWeight = "650";
-          tag.style.color = ct.is_must_have ? "#1a7" : "#a31";
-          tag.style.fontSize = "10px"; tag.style.marginRight = "6px";
-          row.appendChild(tag);
-          const name = document.createElement("strong");
-          name.textContent = ct.type;
-          row.appendChild(name);
-          if (ct.description) {
-            const desc = document.createElement("div");
-            desc.style.color = "#666"; desc.style.fontSize = "11px"; desc.style.marginTop = "2px";
-            desc.textContent = ct.description;
-            row.appendChild(desc);
-          }
-          (ct.seed_variations || []).slice(0, 2).forEach(v => {
-            const ex = document.createElement("div");
-            ex.style.fontSize = "11px"; ex.style.color = "#888";
-            ex.style.marginTop = "3px"; ex.style.fontStyle = "italic";
-            ex.textContent = "“" + v + "”";
-            row.appendChild(ex);
-          });
-          types.appendChild(row);
-        });
+      // Skip re-render if the user is currently editing one of the inputs inside a card.
+      const focused = document.activeElement;
+      const focusedInsideTypes = focused && types.contains(focused);
+      if (!focusedInsideTypes) {
+        while (types.firstChild) types.removeChild(types.firstChild);
+        const cts = currentSig.clause_types || [];
+        if (!cts.length) {
+          const empty = document.createElement("p");
+          empty.className = "muted"; empty.style.padding = "8px 12px";
+          empty.textContent = "No clauses yet — the agent will propose some, and you can edit them here.";
+          types.appendChild(empty);
+        } else {
+          cts.forEach((ct, i) => types.appendChild(buildClauseCard(ct, i)));
+        }
       }
     }
     if (readiness) {
@@ -2175,6 +2169,95 @@ function escape(value) {
       readiness.textContent = ready ? "Ready" : "Draft";
       readiness.className = "badge " + (ready ? "ok" : "warn");
     }
+  }
+
+  function buildClauseCard(ct, idx) {
+    const card = document.createElement("div");
+    card.className = "clauseCard";
+    card.setAttribute("data-idx", String(idx));
+    card.style.padding = "10px 12px";
+    card.style.borderBottom = "1px solid #eee";
+    card.style.fontSize = "12px";
+    card.style.background = ct.is_must_have ? "#f4faf4" : "#faf4f4";
+
+    // Top row: must/not toggle, name input, delete button
+    const top = document.createElement("div");
+    top.style.display = "flex"; top.style.alignItems = "center"; top.style.gap = "6px";
+
+    const mustSel = document.createElement("select");
+    mustSel.className = "clauseMust";
+    mustSel.style.fontSize = "10px"; mustSel.style.padding = "2px 4px";
+    [["must", "MUST"], ["not", "NOT"]].forEach(([v, label]) => {
+      const o = document.createElement("option"); o.value = v; o.textContent = label;
+      if ((v === "must") === !!ct.is_must_have) o.selected = true;
+      mustSel.appendChild(o);
+    });
+    mustSel.addEventListener("change", () => {
+      // re-color
+      card.style.background = mustSel.value === "must" ? "#f4faf4" : "#faf4f4";
+      syncSigFromDOM();
+    });
+    top.appendChild(mustSel);
+
+    const nameInput = document.createElement("input");
+    nameInput.className = "clauseName";
+    nameInput.value = ct.type || "";
+    nameInput.style.flex = "1"; nameInput.style.fontSize = "12px";
+    nameInput.style.fontWeight = "650"; nameInput.style.padding = "3px 6px";
+    nameInput.addEventListener("change", syncSigFromDOM);
+    top.appendChild(nameInput);
+
+    const delBtn = document.createElement("button");
+    delBtn.type = "button"; delBtn.textContent = "×";
+    delBtn.title = "Remove this clause";
+    delBtn.style.fontSize = "14px"; delBtn.style.padding = "0 8px";
+    delBtn.style.cursor = "pointer"; delBtn.style.color = "#a31";
+    delBtn.addEventListener("click", () => {
+      syncSigFromDOM();
+      currentSig.clause_types.splice(idx, 1);
+      renderSig();
+    });
+    top.appendChild(delBtn);
+    card.appendChild(top);
+
+    // Description
+    const descLbl = document.createElement("div");
+    descLbl.style.fontSize = "10px"; descLbl.style.color = "#888"; descLbl.style.marginTop = "6px";
+    descLbl.textContent = "Description";
+    card.appendChild(descLbl);
+    const descInput = document.createElement("textarea");
+    descInput.className = "clauseDesc"; descInput.rows = 2;
+    descInput.value = ct.description || "";
+    descInput.style.width = "100%"; descInput.style.fontSize = "11px";
+    descInput.style.boxSizing = "border-box"; descInput.style.padding = "4px 6px";
+    descInput.style.fontFamily = "inherit";
+    descInput.addEventListener("change", syncSigFromDOM);
+    card.appendChild(descInput);
+
+    // Examples (one per line)
+    const exLbl = document.createElement("div");
+    exLbl.style.fontSize = "10px"; exLbl.style.color = "#888"; exLbl.style.marginTop = "6px";
+    exLbl.textContent = "Example phrasings (one per line)";
+    card.appendChild(exLbl);
+    const exInput = document.createElement("textarea");
+    exInput.className = "clauseExamples"; exInput.rows = 2;
+    exInput.value = (ct.seed_variations || []).join("\n");
+    exInput.style.width = "100%"; exInput.style.fontSize = "11px";
+    exInput.style.boxSizing = "border-box"; exInput.style.padding = "4px 6px";
+    exInput.style.fontFamily = "inherit"; exInput.style.fontStyle = "italic";
+    exInput.addEventListener("change", syncSigFromDOM);
+    card.appendChild(exInput);
+
+    return card;
+  }
+
+  function addBlankClause() {
+    syncSigFromDOM();
+    if (!Array.isArray(currentSig.clause_types)) currentSig.clause_types = [];
+    currentSig.clause_types.push({
+      type: "new_clause", description: "", is_must_have: true, seed_variations: [],
+    });
+    renderSig();
   }
 
   async function showOpening() {
@@ -2188,6 +2271,7 @@ function escape(value) {
   async function chatSend() {
     const input = $id("discChatInput"); const msg = (input.value || "").trim();
     if (!msg) return;
+    syncSigFromDOM();   // capture user edits before sending
     chatLog.push({role: "user", content: msg}); renderChat(); input.value = "";
     const r = await pj("/api/interview/discovery-chat",
                        {signature: currentSig, message: msg});
@@ -2197,6 +2281,7 @@ function escape(value) {
   }
 
   async function saveSig() {
+    syncSigFromDOM();   // capture user edits before saving
     const r = await pj("/api/interview/discovery-chat",
                        {signature: currentSig, message: "save", save: true});
     chatLog.push({role: "agent", content: r.assistant || "saved"}); renderChat();
@@ -2343,10 +2428,15 @@ function escape(value) {
     const cs = $id("discChatSend"); if (cs) cs.addEventListener("click", chatSend);
     const ci = $id("discChatInput"); if (ci) ci.addEventListener("keydown", e => { if (e.key === "Enter") chatSend(); });
     const ss = $id("discSaveSig"); if (ss) ss.addEventListener("click", saveSig);
+    const ac = $id("discAddClauseBtn"); if (ac) ac.addEventListener("click", addBlankClause);
+    const tcEl = $id("discEditTargetClass");
+    const tdEl = $id("discEditTargetDescription");
+    if (tcEl) tcEl.addEventListener("input", () => { currentSig.target_class = tcEl.value; });
+    if (tdEl) tdEl.addEventListener("input", () => { currentSig.target_description = tdEl.value; });
     const rr = $id("discRunRoundBtn"); if (rr) rr.addEventListener("click", runRound);
     const sl = $id("discSubmitLabels"); if (sl) sl.addEventListener("click", submitLabels);
     const fb = $id("discFinalizeBtn"); if (fb) fb.addEventListener("click", finalize);
-    showOpening(); pollState(); pollLibrary();
+    showOpening(); renderSig(); pollState(); pollLibrary();
     setInterval(pollState, 5000); setInterval(pollLibrary, 8000);
   }
   if (document.readyState !== "loading") bind();

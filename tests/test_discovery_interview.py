@@ -13,7 +13,8 @@ def test_discovery_chat_initial_returns_monologue(tmp_root, monkeypatch):
         "initial": True,
     }).json()
     assert resp["engine"] == "scripted_opening"
-    assert "discovery agent" in resp["assistant"].lower()
+    txt = resp["assistant"].lower()
+    assert "what type of contracts" in txt or "specific kind of contract" in txt
 
 
 def test_discovery_chat_save_initializes_library(tmp_root, monkeypatch):

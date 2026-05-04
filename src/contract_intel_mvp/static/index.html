@@ -512,10 +512,10 @@
           <section class="panel">
             <div class="coverHeader">
               <div>
-                <h3>2. Define what you're looking for</h3>
-                <p class="muted">Chat with the discovery agent to define one target contract class. The agent asks about defining clauses, parties, and what should be excluded.</p>
+                <h3>2. Tell the agent what you're looking for</h3>
+                <p class="muted">The agent asks a few short questions, builds up a description, and confirms with you before saving.</p>
               </div>
-              <button id="discSaveSig" type="button">Save signature</button>
+              <button id="discSaveSig" type="button">Save</button>
             </div>
             <div class="interviewLayout">
               <section class="chatPanel" aria-label="Discovery agent chat">
@@ -527,12 +527,22 @@
               </section>
               <aside class="queueDetail">
                 <div class="queueDetailHeader">
-                  <h3>Class Signature</h3>
+                  <h3>What we're looking for</h3>
                   <span id="discReadiness" class="badge warn">Draft</span>
                 </div>
-                <div id="discSigSummary" class="detailFields"></div>
-                <div class="detailSection">
-                  <strong>Clause types</strong>
+                <div class="detailFields" style="padding: 12px;">
+                  <label style="display: block; margin-bottom: 10px;">
+                    <span style="display: block; font-size: 11px; color: #666; font-weight: 650; margin-bottom: 4px;">Target class</span>
+                    <input id="discEditTargetClass" type="text" style="width: 100%; padding: 6px 8px; box-sizing: border-box;" placeholder="e.g. License Agreement" />
+                  </label>
+                  <label style="display: block;">
+                    <span style="display: block; font-size: 11px; color: #666; font-weight: 650; margin-bottom: 4px;">Description / scope</span>
+                    <textarea id="discEditTargetDescription" rows="3" style="width: 100%; padding: 6px 8px; box-sizing: border-box; font-family: inherit;" placeholder="What this kind of contract typically does…"></textarea>
+                  </label>
+                </div>
+                <div class="detailSection" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px;">
+                  <strong>Key clauses</strong>
+                  <button id="discAddClauseBtn" type="button" style="font-size: 11px; padding: 3px 8px;">+ Add</button>
                 </div>
                 <div id="discClauseTypes" class="rows"></div>
               </aside>
