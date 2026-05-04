@@ -64,6 +64,110 @@ def build_app(root: Path):
             return recompute_without_reviewed_context(root)
         return {"error": "unknown toggle: " + str(toggle)}
 
+    from .discovery.signature import init_signature, load_signature
+    from .discovery.library import init_library_from_signature
+
+    DISCOVERY_OPENING = (
+        "Hi. I'm a discovery agent — give me a folder of contracts and I'll find the "
+        "ones of a specific type you're looking for, even if you have thousands of "
+        "them and no metadata.\n\n"
+        "Here's how this works in three rounds, about 15 minutes total:\n\n"
+        "(1) You tell me what to look for. I'll ask 4-5 questions to build a clear "
+        "signature: the contract type, what clauses it always has, what parties or "
+        "relationships it involves, and what would look similar but isn't actually it.\n\n"
+        "(2) I do the heavy lifting. I embed your whole corpus once, rank every "
+        "contract by similarity to your signature, and run a small local model on "
+        "the top candidates to make a yes/no judgment with a confidence score.\n\n"
+        "(3) I ask you to look at 20 borderline cases. I learn from your corrections "
+        "and re-rank. After 2-3 rounds I converge — you get a final list of "
+        "confirmed positives, plus a clause library showing every variation I've "
+        "seen of each defining clause.\n\n"
+        "To start: what type of contract are you looking for? Give me a one-line "
+        "description in your own words."
+    )
+
+    DISCOVERY_SYSTEM_PROMPT = (
+        "You are a discovery interview agent. Help the user define ONE target contract "
+        "class. Build a structured signature with clause TYPES, each with a "
+        "description, is_must_have flag, and 1-2 example phrasings. Ask focused "
+        "follow-ups about defining clauses and what should be excluded. Output strict "
+        "JSON only."
+    )
+
+    @app.post("/api/interview/discovery-chat")
+    def discovery_chat(payload: dict):
+        sig_in = payload.get("signature") or {}
+        message = str(payload.get("message", "")).strip()
+        save = bool(payload.get("save"))
+        initial = bool(payload.get("initial"))
+
+        if initial:
+            return {"signature": sig_in, "assistant": DISCOVERY_OPENING,
+                    "engine": "scripted_opening"}
+
+        if save and sig_in.get("target_class") and sig_in.get("target_description"):
+            init_signature(root, interview=sig_in)
+            init_library_from_signature(root)
+            return {"signature": sig_in, "saved": True,
+                    "assistant": "Signature saved. Library seeded from your examples. Embed the corpus and run round 0.",
+                    "engine": "local_save"}
+
+        if _openai_interview_enabled():
+            prompt = {
+                "task": "Continue a discovery interview. Refine the structured signature.",
+                "current_signature": sig_in,
+                "user_message": message,
+                "schema": {
+                    "assistant": "string",
+                    "signature_updates": {
+                        "target_class": "string",
+                        "target_description": "string",
+                        "clause_types": [{
+                            "type": "string", "description": "string",
+                            "is_must_have": "boolean",
+                            "seed_variations": ["string"],
+                        }],
+                    },
+                    "ready_to_save": "boolean",
+                },
+            }
+            body = {
+                "model": _openai_model(),
+                "messages": [
+                    {"role": "system", "content": DISCOVERY_SYSTEM_PROMPT},
+                    {"role": "user", "content": json.dumps(prompt, indent=2)},
+                ],
+                "max_tokens": 800,
+                "response_format": {"type": "json_object"},
+            }
+            request = urllib.request.Request(
+                f"{_openai_base_url()}/chat/completions",
+                data=json.dumps(body).encode("utf-8"),
+                headers={"Authorization": f"Bearer {os.getenv('OPENAI_API_KEY','').strip()}",
+                         "Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=60) as r:
+                    resp = json.loads(r.read().decode("utf-8"))
+                content = resp["choices"][0]["message"]["content"]
+                parsed = _extract_json_object(content)
+                if isinstance(parsed, dict):
+                    updates = parsed.get("signature_updates") or {}
+                    merged = dict(sig_in)
+                    for k, v in updates.items():
+                        if v: merged[k] = v
+                    return {"signature": merged,
+                            "assistant": str(parsed.get("assistant") or ""),
+                            "ready_to_save": bool(parsed.get("ready_to_save")),
+                            "engine": "openai_api", "model": _openai_model()}
+            except Exception:
+                pass
+
+        return {"signature": sig_in,
+                "assistant": "Tell me one specific clause type that this contract type always contains, and give me a one-sentence example of how it usually reads.",
+                "engine": "local_discovery_fallback"}
+
     return app
 
 
