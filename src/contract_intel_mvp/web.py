@@ -630,8 +630,10 @@ def run_server(root: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None
                             "assistant": str(parsed.get("assistant") or ""),
                             "ready_to_save": bool(parsed.get("ready_to_save")),
                             "engine": "openai_api", "model": _openai_model()}
-            except Exception:
-                pass
+            except Exception as e:
+                import traceback
+                print(f"[discovery_chat] OpenAI call failed: {e}\n{traceback.format_exc()}",
+                      flush=True)
 
         return {"signature": sig_in,
                 "assistant": "Sorry — I lost my train of thought for a second. Could you try that again, or tell me what you'd like me to do next?",
@@ -1613,7 +1615,14 @@ def _output_files(root: Path) -> list[dict[str, object]]:
 
 def _safe_artifact_path(root: Path, rel: str) -> Path | None:
     allowed = {item["path"] for item in _output_files(root)}
-    if rel not in allowed:
+    discovery_prefixes = (
+        "data/discovery/review_queue_round_",
+        "data/discovery/classifications_round_",
+        "data/discovery/shadow_",
+        "data/discovery/signature.json",
+        "data/discovery/clause_library.json",
+    )
+    if rel not in allowed and not rel.startswith(discovery_prefixes):
         return None
     path = (root / rel).resolve()
     try:
